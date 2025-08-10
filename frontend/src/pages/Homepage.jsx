@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 // ✅ FIX: Corrected the casing in the import path to match the component file name.
-import PDFUploader from "../components/PDFUploader/PDFUploader";
+import PDFUploader from "../components/PDFUploader/PDFuploader";
 import PersonaJobForm from "../components/PersonaJobForm/PersonaJobForm";
 import PDFViewer from "../components/PDFViewer/PDFViewer";
 
@@ -69,6 +69,8 @@ export default function HomePage() {
               setUploadedDocs={setUploadedDocs}
               selectedDoc={selectedDoc}
               setSelectedDoc={setSelectedDoc}
+              persona={persona}      
+              job={job}         
             />
           </div>
         </div>

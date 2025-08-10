@@ -1,8 +1,10 @@
 import React, { useState } from "react";
 
-export default function PDFUploader({ uploadedDocs, setUploadedDocs, selectedDoc, setSelectedDoc }) {
+export default function PDFUploader({ uploadedDocs, setUploadedDocs, selectedDoc, setSelectedDoc, persona, job }) {
   const [isDragOver, setIsDragOver] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
+
+  
 
   const handleFileChange = async (e) => {
     const files = Array.from(e.target.files);
@@ -30,15 +32,37 @@ export default function PDFUploader({ uploadedDocs, setUploadedDocs, selectedDoc
 
   const processFiles = async (files) => {
     if (files.length === 0) return;
-    
     setIsUploading(true);
-    
-    // Simulate upload processing
-    await new Promise(resolve => setTimeout(resolve, 1200));
-    
-    setUploadedDocs(files);
-    if (files.length > 0) setSelectedDoc(files[0]);
-    setIsUploading(false);
+
+    try {
+      if (!persona || !job || files.length === 0) {
+        alert("Please provide persona, job, and at least one file");
+        return;
+      }
+
+      const formData = new FormData();
+      files.forEach((file) => formData.append("pdfs", file));
+      formData.append("persona", persona);
+      formData.append("job_to_be_done", job);
+
+      const res = await fetch("http://localhost:8000/upload", {
+        method: "POST",
+        body: formData,
+      });
+
+      if (!res.ok) throw new Error("Upload failed");
+      const data = await res.json();
+      console.log(res);
+
+      // ✅ backend should return processed document info
+      setUploadedDocs(data.files || files);
+      if (files.length > 0) setSelectedDoc(files[0]);
+    } catch (err) {
+      console.error(err);
+      alert("Error uploading files");
+    } finally {
+      setIsUploading(false);
+    }
   };
 
   const removeFile = (indexToRemove) => {
