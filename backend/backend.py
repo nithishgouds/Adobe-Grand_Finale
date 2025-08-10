@@ -1,27 +1,25 @@
 from fastapi import FastAPI, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from typing import List
-import os
 import json
 import shutil
 import subprocess
 from pathlib import Path
+import time
+from datetime import datetime
 
-# --- Constants ---
-DEFAULT_PDF_FOLDER = Path("temp") / "PDFs"
-INPUT_PATH = Path("temp") / "input.json"
-OUTPUT_PATH = Path("temp") / "output.json"
+DEFAULT_PDF_FOLDER = Path("round1b") / "PDFs"
+INPUT_PATH = Path("round1b") / "input.json"
+OUTPUT_PATH = Path("round1b") / "output.json"
 
-# Ensure folder exists
 DEFAULT_PDF_FOLDER.mkdir(parents=True, exist_ok=True)
+INPUT_PATH.parent.mkdir(parents=True, exist_ok=True)
 
-# --- FastAPI app ---
 app = FastAPI()
 
-# Enable CORS at the very beginning
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Change to your frontend URL in production
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -37,10 +35,11 @@ async def upload_pdfs(
         if not persona or not job_to_be_done:
             return {"error": "Persona and job_to_be_done are required"}
 
-        # Save uploaded PDFs
         documents = []
+        timestamp = int(time.time())
+
         for pdf in pdfs:
-            filename = f"{int(Path().stat().st_mtime)}-{pdf.filename}"
+            filename = f"{timestamp}-{pdf.filename}"
             file_path = DEFAULT_PDF_FOLDER / filename
             with open(file_path, "wb") as buffer:
                 shutil.copyfileobj(pdf.file, buffer)
@@ -50,7 +49,6 @@ async def upload_pdfs(
                 "title": Path(pdf.filename).stem
             })
 
-        # Build dynamic JSON input for Python
         input_json = {
             "challenge_info": {
                 "challenge_id": "round_1b_dynamic",
@@ -62,17 +60,24 @@ async def upload_pdfs(
             "job_to_be_done": {"task": job_to_be_done}
         }
 
-        # Create input.json only if it doesn't exist
-        if not INPUT_PATH.exists():
-            with open(INPUT_PATH, "w", encoding="utf-8") as f:
-                json.dump(input_json, f, indent=2)
-            print("✅ Created input.json")
-        else:
-            print("⚠️ input.json already exists — skipping creation")
+        with open(INPUT_PATH, "w", encoding="utf-8") as f:
+            json.dump(input_json, f, indent=2)
 
-        # Call Python script
+        skeleton_output = {
+            "metadata": {
+                "input_documents": [doc["title"] + ".pdf" for doc in documents],
+                "persona": persona,
+                "job_to_be_done": job_to_be_done,
+                "processing_timestamp": datetime.utcnow().isoformat()
+            },
+            "extracted_sections": [],
+            "subsection_analysis": []
+        }
+        with open(OUTPUT_PATH, "w", encoding="utf-8") as f:
+            json.dump(skeleton_output, f, indent=2)
+
         process = subprocess.Popen(
-            ["python3", "main.py"],
+            ["python", "main.py"],
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE
         )
@@ -83,7 +88,6 @@ async def upload_pdfs(
         if stderr:
             print("Python error:", stderr.decode())
 
-        # After Python finishes, read output.json and send to frontend
         if OUTPUT_PATH.exists():
             with open(OUTPUT_PATH, "r", encoding="utf-8") as f:
                 try:
@@ -91,10 +95,8 @@ async def upload_pdfs(
                 except json.JSONDecodeError:
                     return {"error": "Invalid output.json format"}
         else:
-            return {"error": "output.json not found"}
+            return {"error": "output.json not found after running main.py"}
 
     except Exception as e:
-        print(e)
+        print("❌ Exception:", e)
         return {"error": "Failed to upload PDFs"}
-
-
