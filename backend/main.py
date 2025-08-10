@@ -9,10 +9,13 @@ import numpy as np
 from sentence_transformers import SentenceTransformer
 from process_pdfs import main_process_pdf
 
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+DEFAULT_INPUT_JSON = os.path.join(BASE_DIR, "round1b", "input.json")
+DEFAULT_PDF_FOLDER = os.path.join(BASE_DIR, "round1b", "PDFs")
+DEFAULT_OUTPUT_PATH = os.path.join(BASE_DIR, "round1b", "output.json")
 
-DEFAULT_INPUT_JSON = "backend\input.json"
-DEFAULT_PDF_FOLDER = "backend\PDFs"
-DEFAULT_OUTPUT_PATH = "backend\output.json"
+
+
 
 
 
