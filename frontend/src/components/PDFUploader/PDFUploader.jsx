@@ -4,8 +4,6 @@ export default function PDFUploader({ uploadedDocs, setUploadedDocs, selectedDoc
   const [isDragOver, setIsDragOver] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
 
-  
-
   const handleFileChange = async (e) => {
     const files = Array.from(e.target.files);
     await processFiles(files);

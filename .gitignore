@@ -76,3 +76,4 @@ docker-compose.override.yml
 # ==========================
 # Ignore temporary files created by editors or OS
 *.~lock.*
+*.pdf

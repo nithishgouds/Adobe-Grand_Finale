@@ -9,6 +9,7 @@ export default function HomePage() {
   const [job, setJob] = useState("");
   const [uploadedDocs, setUploadedDocs] = useState([]);
   const [selectedDoc, setSelectedDoc] = useState(null);
+  const [setupDone, setIsLoading] = useState(false);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100">

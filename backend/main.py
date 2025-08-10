@@ -15,10 +15,6 @@ DEFAULT_PDF_FOLDER = os.path.join(BASE_DIR, "round1b", "PDFs")
 DEFAULT_OUTPUT_PATH = os.path.join(BASE_DIR, "round1b", "output.json")
 
 
-
-
-
-
 def load_input_config(path):
     with open(path, 'r', encoding='utf-8') as f:
         data = json.load(f)
@@ -121,8 +117,6 @@ def build_faiss_index(model, sections):
     index = faiss.IndexFlatIP(dim) 
     index.add(np.array(embeddings).astype('float32'))
     return index, metadata
-
-
 
 def query_faiss_index(model, index, metadata, query_text, top_k=25):
     query_embedding = model.encode(query_text, normalize_embeddings=True)

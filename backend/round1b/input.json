@@ -1,0 +1,51 @@
+{
+  "challenge_info": {
+    "challenge_id": "round_1b_dynamic",
+    "test_case_name": "dynamic_pdf_processing",
+    "description": "Dynamic PDF upload and metadata"
+  },
+  "documents": [
+    {
+      "filename": "1754851986-Dinner Ideas - Mains_3.pdf",
+      "title": "Dinner Ideas - Mains_3"
+    },
+    {
+      "filename": "1754851986-Dinner Ideas - Sides_2.pdf",
+      "title": "Dinner Ideas - Sides_2"
+    },
+    {
+      "filename": "1754851986-Dinner Ideas - Sides_4.pdf",
+      "title": "Dinner Ideas - Sides_4"
+    },
+    {
+      "filename": "1754851986-Dinner Ideas - Sides_3.pdf",
+      "title": "Dinner Ideas - Sides_3"
+    },
+    {
+      "filename": "1754851986-Lunch Ideas.pdf",
+      "title": "Lunch Ideas"
+    },
+    {
+      "filename": "1754851986-Dinner Ideas - Mains_1.pdf",
+      "title": "Dinner Ideas - Mains_1"
+    },
+    {
+      "filename": "1754851986-Dinner Ideas - Mains_2.pdf",
+      "title": "Dinner Ideas - Mains_2"
+    },
+    {
+      "filename": "1754851986-Dinner Ideas - Sides_1.pdf",
+      "title": "Dinner Ideas - Sides_1"
+    },
+    {
+      "filename": "1754851986-Breakfast Ideas.pdf",
+      "title": "Breakfast Ideas"
+    }
+  ],
+  "persona": {
+    "role": "Food Contractor"
+  },
+  "job_to_be_done": {
+    "task": "Prepare a vegetarian buffet-style dinner menu for a corporate gathering, including gluten-free items."
+  }
+}
