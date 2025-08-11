@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import HomePage from "./pages/Homepage";
+import AdobeSmartApp from "./pages/Homepage";
 
 export default function App() {
   const [persona, setPersona] = useState("");
@@ -7,7 +7,7 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-gray-100">
-      <HomePage persona={persona} job={job} setPersona={setPersona} setJob={setJob} />
+      <AdobeSmartApp/>
     </div>
   );
 }
