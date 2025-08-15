@@ -55,6 +55,7 @@ export default function AbodeSmartApp() {
   };
 
   const uploadCurrent = async (files) => {
+    await processAll(); 
     if (!files?.length) return;
     const form = new FormData();
     files.forEach((f) => form.append("pdfs", f));
@@ -75,9 +76,6 @@ export default function AbodeSmartApp() {
 
     const added = Array.from(files).map((f) => ({ name: f.name, url: absUrl(f.name) }));
     setCurrentDocs((prev) => [...prev, ...added]);
-    
-    setProcessing(false);
-    setProcessed(false);
   };
 
   const processAll = async () => {
@@ -287,14 +285,8 @@ export default function AbodeSmartApp() {
           </ul>
 
           <div className="flex items-center gap-2 mt-3">
-            <button
-              onClick={processAll}
-              className="bg-blue-600 text-white px-3 py-1 rounded disabled:opacity-50"
-              disabled={!currentDocs.length || processing}
-            >
-              {processing ? "Processing..." : "Process All & Open Top"}
-            </button>
             {processed && <span className="text-green-600 text-sm">Processed ✓</span>}
+            {!processed && processing && <span className="text-yellow-600 text-sm">Processing…</span>}
           </div>
           {sessionId && (
             <div className="mt-2 text-xs text-gray-500">
