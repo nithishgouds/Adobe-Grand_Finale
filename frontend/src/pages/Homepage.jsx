@@ -1,45 +1,38 @@
 import React, { useEffect, useRef, useState } from "react";
 
-const API_BASE = "http://127.0.0.1:8000";
+const API_BASE = "http://127.0.0.1:8000"
 
 export default function AbodeSmartApp() {
   const [persona, setPersona] = useState({ name: "", profession: "", task: "" });
+
   const [pastDocs, setPastDocs] = useState([]);
   const [currentDocs, setCurrentDocs] = useState([]);
   const [selectedDoc, setSelectedDoc] = useState(null);
+
   const [sessionId, setSessionId] = useState(null);
   const [processing, setProcessing] = useState(false);
   const [processed, setProcessed] = useState(false);
-  const [relevantSections, setRelevantSections] = useState([]);
-  const [topRelevant, setTopRelevant] = useState([]);
 
-  // State to track what's currently loaded in the viewer
-  const [currentPdfInViewer, setCurrentPdfInViewer] = useState(null);
+  const [relevantSections, setRelevantSections] = useState([]);
+  const [topRelevant, setTopRelevant] = useState([]); // NEW: Top 5 relevant list
+
+  const viewRef = useRef(null);
   const [adobeReady, setAdobeReady] = useState(false);
 
-  // Ref to hold the Adobe viewer instance's APIs
-  const viewerApiRef = useRef(null);
-
   const qs = (obj) => new URLSearchParams(obj).toString();
-  const absUrl = (sessionId, name) => `${API_BASE}/files/${sessionId}/${encodeURIComponent(name)}`;
+  const absUrl = (name) => ${API_BASE}/PDFs/${encodeURIComponent(name)};
 
-  // 1. ✅ Correctly load the Adobe Embed SDK script
-  useEffect(() => {
-    if (window.AdobeDC) {
-      setAdobeReady(true);
-      return;
-    }
-    const script = document.createElement("script");
-    script.src = "https://documentcloud.adobe.com/view-sdk/viewer.js";
-    script.onload = () => setAdobeReady(true);
-    document.body.appendChild(script);
-  }, []);
+  const refreshListFromApi = async () => {
+    const res = await fetch(${API_BASE}/list-pdfs?${qs({ session_id: sessionId || "" })});
+    const data = await res.json();
+    const files = (data?.files || []).map((f) => ({ name: f.name, url: f.url }));
+  };
 
-  // --- API Functions (Largely unchanged) ---
   const uploadPast = async (files) => {
     if (!files?.length) return;
     const form = new FormData();
     files.forEach((f) => form.append("pdfs", f));
+
     const url = `${API_BASE}/upload-past-docs?${qs({
       session_id: sessionId || "",
       challenge_id: "default_challenge",
@@ -48,60 +41,101 @@ export default function AbodeSmartApp() {
       persona_role: persona.profession || "default_role",
       task: persona.task || "default_task",
     })}`;
+
     setProcessing(true);
     const res = await fetch(url, { method: "POST", body: form });
     const data = await res.json();
     if (data?.session_id && !sessionId) setSessionId(data.session_id);
+
     const added = Array.from(files).map((f) => ({ name: f.name, url: absUrl(f.name) }));
     setPastDocs((prev) => [...prev, ...added]);
+
     setProcessing(false);
+    setProcessed(false);
   };
 
   const uploadCurrent = async (files) => {
     if (!files?.length) return;
-    if (!sessionId) return alert("Please upload at least one past document first.");
     const form = new FormData();
     files.forEach((f) => form.append("pdf", f));
+
     const url = `${API_BASE}/upload-current-doc?${qs({
-      session_id: sessionId,
+      session_id: sessionId || "",
       challenge_id: "default_challenge",
       test_case_name: "default_test_case",
       description: "default_description",
       persona_role: persona.profession || "default_role",
       task: persona.task || "default_task",
     })}`;
+
+    form.append("session_id", sessionId || "");
+
     setProcessing(true);
-    await fetch(url, { method: "POST", body: form });
+    const res = await fetch(url, { method: "POST", body: form });
+    const data = await res.json();
+    if (data?.session_id && !sessionId) setSessionId(data.session_id);
+
     const added = Array.from(files).map((f) => ({ name: f.name, url: absUrl(f.name) }));
     setCurrentDocs((prev) => [...prev, ...added]);
-    setProcessing(false);
-    setProcessed(true);
   };
-  
-  // 2. ✅ Function to handle the text selection API call
+
+  // const processAll = async () => {
+  //   if (!sessionId) {
+  //     alert("Please upload at least one PDF first.");
+  //     return;
+  //   }
+
+  //   setProcessing(true);
+  //   const url = `${API_BASE}/process?${qs({
+  //     session_id: sessionId,
+  //     persona_role: persona.profession || "default_role",
+  //     task: persona.task || "default_task",
+  //     challenge_id: "default_challenge",
+  //     test_case_name: "default_test_case",
+  //     description: "default_description",
+  //   })}`;
+  //   const res = await fetch(url, { method: "POST" });
+  //   const data = await res.json();
+  //   setProcessing(false);
+  //   setProcessed(true);
+
+  //   if (currentDocs.length) {
+  //     openInViewer(currentDocs[0]);
+  //     setSelectedDoc(currentDocs[0]);
+  //   }
+  // };
+
+  useEffect(() => {
+    if (window.AdobeDC) {
+      setAdobeReady(true);
+      return;
+    }
+    window.adobe_dc_view_sdk = window.adobe_dc_view_sdk || {};
+    window.adobe_dc_view_sdk.ready = () => setAdobeReady(true);
+  }, []);
+
+  // NEW: Handle text selection API call
   const handleTextSelection = async (pdfName, pageNo, selectedText) => {
-    if (!selectedText?.trim()) return; // Don't send empty selections
-    console.log(`Text selected in ${pdfName} (p.${pageNo}): "${selectedText}"`);
     try {
-      const res = await fetch(`${API_BASE}/select-text`, {
+      const res = await fetch(${API_BASE}/select-text, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           pdf_name: pdfName,
           page_no: pageNo,
-          selected_text: selectedText, // Ensure key matches backend
+          selected_text: selectedText,
         }),
       });
       const data = await res.json();
-      if (Array.isArray(data)) {
+      if (Array.isArray(data) && data.length) {
         updateRelevantList(data);
       }
     } catch (err) {
-      console.error("Error fetching relevant sections:", err);
+      console.error("Error fetching top relevant:", err);
     }
   };
-  
-  // 3. ✅ Function to update the list and navigate to the top result
+
+  // NEW: Update relevant list and auto-navigate to first
   const updateRelevantList = (list) => {
     setTopRelevant(list);
     if (list.length > 0) {
@@ -109,78 +143,67 @@ export default function AbodeSmartApp() {
     }
   };
 
-  // 4. ✅ Main function to open a PDF in the viewer with proper event listeners
-  const openInViewer = (doc) => {
-    if (!adobeReady || !doc?.url) return;
-    
-    // Track the document being loaded
-    setCurrentPdfInViewer(doc);
-
-    const adobeView = new window.AdobeDC.View({
-      clientId: import.meta.env.VITE_ADOBE_EMBED_API_KEY || process.env.REACT_APP_ADOBE_EMBED_API_KEY,
-      divId: "adobe-dc-view",
-    });
-
-    adobeView.previewFile({
-        content: { location: { url: doc.url } },
-        metaData: { 
-          fileName: doc.name,
-          id: doc.name, // Ensure the ID matches the name for consistency
-         },
-      }, {
-        // Enable all tools and APIs
-        showAnnotationTools: true,
-        enableAnnotationAPIs: true,
-        includePDFAnnotations: true,
-        showDownloadPDF: true,
-        showPrintPDF: true,
-        enableSearchAPIs: true,
-        // CRITICAL: This enables the text selection event
-        enableTextSelection: true,
-      })
-      .then((viewer) => {
-        // This is the modern, promise-based way to get APIs
-        viewer.getAPIs().then((apis) => {
-          // Store the APIs in a ref for later use (like navigation)
-          viewerApiRef.current = apis;
-
-          // Register the event listener for text selection
-          apis.addEventListener(
-            window.AdobeDC.View.Enum.Events.TEXT_SELECT,
-            (event) => {
-              if (event.data?.selectedText) {
-                // Use the currently loaded PDF's info for the API call
-                handleTextSelection(doc.name, event.data.pageNumber, event.data.selectedText);
-              }
-            }
-          );
-        });
-      });
-  };
-
-  // 5. ✅ Robust navigation function that uses the viewer's API
+  // NEW: Navigate to PDF and page
   const navigateToPage = (item) => {
-    // If the correct document is already in the viewer, just go to the page
-    if (viewerApiRef.current && currentPdfInViewer?.name === item.pdf_name) {
-      viewerApiRef.current.gotoLocation(item.page_no);
-    } else {
-      // Otherwise, load the new document first
-      const docToOpen = { name: item.pdf_name, url: absUrl(item.pdf_name) };
-      setSelectedDoc(docToOpen);
-      openInViewer(docToOpen);
-
-      // Give it time to load, then navigate
-      setTimeout(() => {
-        viewerApiRef.current?.gotoLocation(item.page_no);
-      }, 1000); // 1s delay might need adjustment
-    }
+    openInViewer({ name: item.pdf_name, url: absUrl(item.pdf_name) });
+    setSelectedDoc({ name: item.pdf_name, url: absUrl(item.pdf_name) });
+    setTimeout(() => {
+      if (viewRef.current) {
+        viewRef.current.gotoLocation(item.page_no);
+      }
+    }, 500);
   };
 
-  // Session cleanup effect
+  const openInViewer = (doc) => { 
+     if (!adobeReady || !doc?.url) return;
+     // Track the document being loaded 
+
+     const adobeView = new window.AdobeDC.View({ 
+       clientId: import.meta.env.VITE_ADOBE_EMBED_API_KEY || process.env.REACT_APP_ADOBE_EMBED_API_KEY, 
+       divId: "adobe-dc-view", 
+     }); 
+     adobeView.previewFile({ 
+         content: { location: { url: doc.url } }, 
+         metaData: {  
+           fileName: doc.name, 
+           id: doc.name, // Ensure the ID matches the name for consistency 
+          }, 
+       }, { 
+         // Enable all tools and APIs 
+         showAnnotationTools: true, 
+         enableAnnotationAPIs: true, 
+         includePDFAnnotations: true, 
+         showDownloadPDF: true, 
+         showPrintPDF: true, 
+         enableSearchAPIs: true, 
+         // CRITICAL: This enables the text selection even
+         enableTextSelection: true, 
+       }) 
+
+       .then((viewer) => { 
+         // This is the modern, promise-based way to get APIs
+         viewer.getAPIs().then((apis) => { 
+           // Store the APIs in a ref for later use (like navigation
+           viewerApiRef.current = apis; 
+
+           // Register the event listener for text selection 
+           apis.addEventListener( 
+             window.AdobeDC.View.Enum.Events.TEXT_SELECT, 
+             (event) => { 
+               if (event.data?.selectedText) { 
+                 // Use the currently loaded PDF's info for the API call 
+                 handleTextSelection(doc.name, event.data.pageNumber, event.data.selectedText); 
+               }
+             } 
+           ); 
+         }); 
+       }); 
+   };
+
   useEffect(() => {
     const onClose = () => {
       if (!sessionId) return;
-      fetch(`${API_BASE}/end-session?${qs({ session_id: sessionId })}`, {
+      fetch(${API_BASE}/end-session?${qs({ session_id: sessionId })}, {
         method: "POST",
         keepalive: true,
       });
@@ -191,7 +214,7 @@ export default function AbodeSmartApp() {
 
   return (
     <div className="p-4 grid grid-cols-12 gap-4">
-      {/* --- Left Column: Persona & Past Library --- */}
+      {/* Left: Persona + Past Library */}
       <div className="col-span-3 space-y-4">
         <div className="bg-white rounded-xl border p-3">
           <div className="font-semibold mb-2">Persona</div>
@@ -216,8 +239,11 @@ export default function AbodeSmartApp() {
             />
           </div>
         </div>
+
         <div className="bg-white rounded-xl border p-3">
-          <div className="font-semibold mb-2">Past Library</div>
+          <div className="flex items-center justify-between mb-2">
+            <div className="font-semibold">Past Library</div>
+          </div>
           <input
             type="file"
             multiple
@@ -226,7 +252,7 @@ export default function AbodeSmartApp() {
           />
           <ul className="max-h-60 overflow-auto space-y-1">
             {pastDocs.map((d, i) => (
-              <li key={`${d.name}-${i}`}>
+              <li key={${d.name}-${i}}>
                 <button
                   onClick={() => {
                     openInViewer(d);
@@ -244,7 +270,7 @@ export default function AbodeSmartApp() {
         </div>
       </div>
 
-      {/* --- Middle Column: Current Session & Relevant List --- */}
+      {/* Middle: Current Session + Controls */}
       <div className="col-span-3 space-y-4">
         <div className="bg-white rounded-xl border p-3">
           <div className="font-semibold mb-2">Current Session</div>
@@ -256,7 +282,7 @@ export default function AbodeSmartApp() {
           />
           <ul className="max-h-60 overflow-auto space-y-1">
             {currentDocs.map((d, i) => (
-              <li key={`${d.name}-${i}`}>
+              <li key={${d.name}-${i}}>
                 <button
                   onClick={() => {
                     openInViewer(d);
@@ -271,6 +297,7 @@ export default function AbodeSmartApp() {
             ))}
             {!currentDocs.length && <li className="text-sm text-gray-500">No current files yet</li>}
           </ul>
+
           <div className="flex items-center gap-2 mt-3">
             {processed && <span className="text-green-600 text-sm">Processed ✓</span>}
             {!processed && processing && <span className="text-yellow-600 text-sm">Processing…</span>}
@@ -281,24 +308,26 @@ export default function AbodeSmartApp() {
             </div>
           )}
         </div>
+
+        {/* NEW: Top 5 Relevant */}
         {!!topRelevant.length && (
           <div className="bg-white rounded-xl border p-3 mt-4">
-            <div className="font-semibold mb-2">Relevant Sections</div>
+            <div className="font-semibold mb-2">Top 5 Relevant</div>
             <ul className="space-y-2">
               {topRelevant.map((item, idx) => (
-                <li key={idx} className="border rounded p-2 flex justify-between items-center">
+                <li key={idx} className="border rounded p-2 flex justify-between">
                   <div className="min-w-0">
-                    <div className="font-medium truncate" title={item.pdf_name}>
+                    <div className="font-medium truncate">
                       {item.pdf_name} — p.{item.page_no}
                     </div>
-                    <div className="text-sm italic truncate" title={item.section_title}>{item.section_title}</div>
+                    <div className="text-sm italic truncate">{item.section_title}</div>
                     <div className="text-sm text-gray-600 line-clamp-2">{item.sub_text}</div>
                   </div>
                   <button
                     onClick={() => navigateToPage(item)}
-                    className="shrink-0 bg-blue-600 text-white px-3 py-1 rounded ml-2"
+                    className="shrink-0 bg-blue-600 text-white px-2 py-1 rounded"
                   >
-                    Go
+                    Navigate
                   </button>
                 </li>
               ))}
@@ -307,17 +336,45 @@ export default function AbodeSmartApp() {
         )}
       </div>
 
-      {/* --- Right Column: Viewer --- */}
-      <div className="col-span-6">
+      {/* Right: Viewer */}
+      <div className="col-span-6 space-y-4">
         <div className="bg-white rounded-xl border p-3">
           <div className="flex items-center justify-between mb-2">
             <div className="font-semibold">PDF Viewer</div>
-            <div className="text-xs text-gray-500 truncate" title={selectedDoc?.name}>
-              {processing ? "processing…" : selectedDoc ? selectedDoc.name : "No document selected"}
+            <div className="text-xs text-gray-500">
+              {processing ? "processing…" : selectedDoc ? selectedDoc.name : "idle"}
             </div>
           </div>
-          <div id="adobe-dc-view" className="h-[750px] border rounded" />
+          <div id="adobe-dc-view" className="h-[600px] border rounded" />
         </div>
+
+        {!!relevantSections.length && (
+          <div className="bg-white rounded-xl border p-3">
+            <div className="font-semibold mb-2">Relevant Sections</div>
+            <div className="space-y-2">
+              {relevantSections.map((s, idx) => (
+                <div
+                  key={idx}
+                  className="border rounded p-2 flex items-start justify-between gap-3"
+                >
+                  <div className="min-w-0">
+                    <div className="font-medium truncate">{s.PDF_name} — p.{s.page_no}</div>
+                    <div className="text-sm italic truncate">{s.Section_title}</div>
+                    <div className="text-sm text-gray-600 line-clamp-3">{s.Snippet}</div>
+                  </div>
+                  <button
+                    onClick={() =>
+                      navigateToPage({ pdf_name: s.PDF_name, page_no: s.page_no })
+                    }
+                    className="shrink-0 bg-blue-600 text-white px-2 py-1 rounded"
+                  >
+                    Navigate
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
