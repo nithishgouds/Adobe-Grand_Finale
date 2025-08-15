@@ -24,14 +24,21 @@ app.add_middleware(
 
 app.mount("/files", StaticFiles(directory=PDF_FOLDER), name="files")
 
+
 class TextSelectionRequest(BaseModel):
     session_id: str
     selected_text: str
+
+
+def session_id():
+    return TextSelectionRequest.session_id
+
 
 def create_session_folder():
     session_id = str(uuid.uuid4())
     SESSION_FOLDERS[session_id] = PDF_FOLDER
     return session_id, PDF_FOLDER
+
 
 def clear_session_folder(session_id: str):
     if session_id in SESSION_FOLDERS:
@@ -41,6 +48,7 @@ def clear_session_folder(session_id: str):
                 file_path.unlink()
         del SESSION_FOLDERS[session_id]
         print(f"Cleared files for session: {session_id}")
+
 
 @app.post("/upload-past-docs")
 async def upload_past_docs(pdfs: List[UploadFile] = File(...)):
@@ -56,7 +64,7 @@ async def upload_past_docs(pdfs: List[UploadFile] = File(...)):
         try:
             subprocess.run(
                 [
-                    "python", "save_pdfs.py",
+                    "C:/Users/chitr/Documents/GitHub/Adobe-Finale/backend/venv/Scripts/python.exe", "save_pdfs.py",
                     "--pdf_folder", str(folder_path),
                     "--session_id", session_id
                 ],
@@ -70,22 +78,34 @@ async def upload_past_docs(pdfs: List[UploadFile] = File(...)):
     except Exception as e:
         return {"error": str(e)}
 
+
 @app.post("/upload-current-doc")
-async def upload_current_doc(pdf: UploadFile = File(...), session_id: str = Query(...)):
+async def upload_current_doc(
+    pdf: List[UploadFile] = File(...),
+    session_id: str = Query(...)
+):
     if session_id not in SESSION_FOLDERS:
-        return {"error": "Invalid or missing session ID. Please upload past documents first."}
+        return {"error": "Invalid session ID."}
     try:
-        folder_path = SESSION_FOLDERS[session_id]
-        file_path = folder_path / pdf.filename
-        with open(file_path, "wb") as buffer:
-            shutil.copyfileobj(pdf.file, buffer)
-        return {"message": "Current document uploaded successfully", "filename": pdf.filename}
+        folder_path = SESSION_FOLDERS[session_id]  # fixed: no () call
+        documents = []
+        for file in pdf:
+            file_path = folder_path / file.filename
+            with open(file_path, "wb") as buffer:
+                shutil.copyfileobj(file.file, buffer)
+            documents.append(file.filename)
+        return {
+            "message": "Current document(s) uploaded successfully",
+            "filenames": documents
+        }
     except Exception as e:
         return {"error": str(e)}
 
+
 @app.post("/select-text")
 async def select_text(request: TextSelectionRequest):
-    print(f"Received text selection for session {request.session_id}: '{request.selected_text}'")
+    print(
+        f"Received text selection for session {request.session_id}: '{request.selected_text}'")
     return {
         "data": {
             "extracted_sections": [
@@ -98,6 +118,7 @@ async def select_text(request: TextSelectionRequest):
             ]
         }
     }
+
 
 @app.post("/end-session")
 async def end_session(session_id: str):

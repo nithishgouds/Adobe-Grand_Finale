@@ -20,7 +20,7 @@ export default function AbodeSmartApp() {
   const [adobeReady, setAdobeReady] = useState(false);
 
   const qs = (obj) => new URLSearchParams(obj).toString();
-  const absUrl = (name) => `${API_BASE}/PDFs/${encodeURIComponent(name)}`;
+  const absUrl = (name) => `${API_BASE}/files/${encodeURIComponent(name)}`;
 
   const refreshListFromApi = async () => {
     const res = await fetch(`${API_BASE}/list-pdfs?${qs({ session_id: sessionId || "" })}`);
@@ -33,7 +33,7 @@ export default function AbodeSmartApp() {
     const form = new FormData();
     files.forEach((f) => form.append("pdfs", f));
 
-    const url = `${API_BASE}/upload?${qs({
+    const url = `${API_BASE}/upload-past-docs?${qs({
       session_id: sessionId || "",
       challenge_id: "default_challenge",
       test_case_name: "default_test_case",
@@ -45,7 +45,7 @@ export default function AbodeSmartApp() {
     setProcessing(true);
     const res = await fetch(url, { method: "POST", body: form });
     const data = await res.json();
-    if (data?.session_id && !sessionId) setSessionId(data.session_id);
+    if (data?.session_id && !sessionId) setSessionId(data["session_id"]);
 
     const added = Array.from(files).map((f) => ({ name: f.name, url: absUrl(f.name) }));
     setPastDocs((prev) => [...prev, ...added]);
@@ -54,14 +54,21 @@ export default function AbodeSmartApp() {
     setProcessed(false);
   };
 
-  const uploadCurrent = async (files) => {
-    await processAll(); 
+  const uploadCurrent = async (files) => { 
     if (!files?.length) return;
-    const form = new FormData();
-    files.forEach((f) => form.append("pdfs", f));
 
-    const url = `${API_BASE}/upload?${qs({
-      session_id: sessionId || "",
+    // Ensure we have a session before uploading current docs
+    let sid = sessionId;
+    if (!sid) {
+      alert("Please upload at least one past document first.");
+      return;
+    }
+
+    const form = new FormData();
+    files.forEach((f) => form.append("pdf", f)); // name matches backend
+
+    const url = `${API_BASE}/upload-current-doc?${qs({
+      session_id: sid,
       challenge_id: "default_challenge",
       test_case_name: "default_test_case",
       description: "default_description",
@@ -72,36 +79,15 @@ export default function AbodeSmartApp() {
     setProcessing(true);
     const res = await fetch(url, { method: "POST", body: form });
     const data = await res.json();
-    if (data?.session_id && !sessionId) setSessionId(data.session_id);
+    if (data?.error) {
+      console.error(data.error);
+    }
 
     const added = Array.from(files).map((f) => ({ name: f.name, url: absUrl(f.name) }));
     setCurrentDocs((prev) => [...prev, ...added]);
-  };
-
-  const processAll = async () => {
-    if (!sessionId) {
-      alert("Please upload at least one PDF first.");
-      return;
-    }
 
     setProcessing(true);
-    const url = `${API_BASE}/process?${qs({
-      session_id: sessionId,
-      persona_role: persona.profession || "default_role",
-      task: persona.task || "default_task",
-      challenge_id: "default_challenge",
-      test_case_name: "default_test_case",
-      description: "default_description",
-    })}`;
-    const res = await fetch(url, { method: "POST" });
-    const data = await res.json();
-    setProcessing(false);
     setProcessed(true);
-
-    if (currentDocs.length) {
-      openInViewer(currentDocs[0]);
-      setSelectedDoc(currentDocs[0]);
-    }
   };
 
   useEffect(() => {
