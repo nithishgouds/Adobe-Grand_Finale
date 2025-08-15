@@ -5,24 +5,20 @@ const API_BASE = "http://127.0.0.1:8000"
 export default function AbodeSmartApp() {
   const [persona, setPersona] = useState({ name: "", profession: "", task: "" });
 
-  // Lists
-  const [pastDocs, setPastDocs] = useState([]);     // [{name, url}]
-  const [currentDocs, setCurrentDocs] = useState([]); // [{name, url}]
+  const [pastDocs, setPastDocs] = useState([]);
+  const [currentDocs, setCurrentDocs] = useState([]);
   const [selectedDoc, setSelectedDoc] = useState(null);
 
-  // Session & state
   const [sessionId, setSessionId] = useState(null);
   const [processing, setProcessing] = useState(false);
   const [processed, setProcessed] = useState(false);
 
-  // Relevance panel (placeholder; will come from backend later)
   const [relevantSections, setRelevantSections] = useState([]);
+  const [topRelevant, setTopRelevant] = useState([]); // NEW: Top 5 relevant list
 
-  // Adobe viewer
   const viewRef = useRef(null);
   const [adobeReady, setAdobeReady] = useState(false);
 
-  // ---------- Helpers ----------
   const qs = (obj) => new URLSearchParams(obj).toString();
   const absUrl = (name) => `${API_BASE}/PDFs/${encodeURIComponent(name)}`;
 
@@ -32,7 +28,6 @@ export default function AbodeSmartApp() {
     const files = (data?.files || []).map((f) => ({ name: f.name, url: f.url }));
   };
 
-  // ---------- Uploads (no processing here) ----------
   const uploadPast = async (files) => {
     if (!files?.length) return;
     const form = new FormData();
@@ -40,7 +35,6 @@ export default function AbodeSmartApp() {
 
     const url = `${API_BASE}/upload?${qs({
       session_id: sessionId || "",
-      // these are saved with upload as per your signature (but no processing)
       challenge_id: "default_challenge",
       test_case_name: "default_test_case",
       description: "default_description",
@@ -57,7 +51,7 @@ export default function AbodeSmartApp() {
     setPastDocs((prev) => [...prev, ...added]);
 
     setProcessing(false);
-    setProcessed(false); // new files invalidate previous processing
+    setProcessed(false);
   };
 
   const uploadCurrent = async (files) => {
@@ -81,12 +75,11 @@ export default function AbodeSmartApp() {
 
     const added = Array.from(files).map((f) => ({ name: f.name, url: absUrl(f.name) }));
     setCurrentDocs((prev) => [...prev, ...added]);
-
+    
     setProcessing(false);
     setProcessed(false);
   };
 
-  // ---------- Process All ----------
   const processAll = async () => {
     if (!sessionId) {
       alert("Please upload at least one PDF first.");
@@ -107,18 +100,13 @@ export default function AbodeSmartApp() {
     setProcessing(false);
     setProcessed(true);
 
-    // Auto-open the first current doc after processing
     if (currentDocs.length) {
       openInViewer(currentDocs[0]);
       setSelectedDoc(currentDocs[0]);
     }
-    // Optional: if backend returns relevance, set it:
-    // setRelevantSections(data?.data?.extracted_sections ?? []);
   };
 
-  // ---------- Adobe Embed ----------
   useEffect(() => {
-    // Wait for SDK ready
     if (window.AdobeDC) {
       setAdobeReady(true);
       return;
@@ -127,12 +115,51 @@ export default function AbodeSmartApp() {
     window.adobe_dc_view_sdk.ready = () => setAdobeReady(true);
   }, []);
 
+  // NEW: Handle text selection API call
+  const handleTextSelection = async (pdfName, pageNo, selectedText) => {
+    try {
+      const res = await fetch(`${API_BASE}/select-text`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          pdf_name: pdfName,
+          page_no: pageNo,
+          selected_text: selectedText,
+        }),
+      });
+      const data = await res.json();
+      if (Array.isArray(data) && data.length) {
+        updateRelevantList(data);
+      }
+    } catch (err) {
+      console.error("Error fetching top relevant:", err);
+    }
+  };
+
+  // NEW: Update relevant list and auto-navigate to first
+  const updateRelevantList = (list) => {
+    setTopRelevant(list);
+    if (list.length > 0) {
+      navigateToPage(list[0]);
+    }
+  };
+
+  // NEW: Navigate to PDF and page
+  const navigateToPage = (item) => {
+    openInViewer({ name: item.pdf_name, url: absUrl(item.pdf_name) });
+    setSelectedDoc({ name: item.pdf_name, url: absUrl(item.pdf_name) });
+    setTimeout(() => {
+      if (viewRef.current) {
+        viewRef.current.gotoLocation(item.page_no);
+      }
+    }, 500);
+  };
+
   const openInViewer = (doc) => {
     if (!adobeReady) return;
     const clientId =
       import.meta.env.VITE_ADOBE_EMBED_API_KEY || process.env.REACT_APP_ADOBE_EMBED_API_KEY;
 
-    // Always create a new viewer so it doesn't cache previous document
     viewRef.current = new window.AdobeDC.View({
       clientId,
       divId: "adobe-dc-view",
@@ -148,14 +175,22 @@ export default function AbodeSmartApp() {
         dockPageControls: true,
       }
     );
+
+    // NEW: Listen for text selection
+    viewRef.current.registerCallback(
+      window.AdobeDC.View.Enum.CallbackType.EVENT_LISTENER,
+      (event) => {
+        if (event.type === "TEXT_SELECTED") {
+          const { selectedText, pageNumber } = event.data;
+          handleTextSelection(doc.name, pageNumber, selectedText);
+        }
+      }
+    );
   };
 
-
-  // ---------- Cleanup session on close ----------
   useEffect(() => {
     const onClose = () => {
       if (!sessionId) return;
-      // keepalive lets the request complete during unload
       fetch(`${API_BASE}/end-session?${qs({ session_id: sessionId })}`, {
         method: "POST",
         keepalive: true,
@@ -165,7 +200,6 @@ export default function AbodeSmartApp() {
     return () => window.removeEventListener("beforeunload", onClose);
   }, [sessionId]);
 
-  // ---------- UI ----------
   return (
     <div className="p-4 grid grid-cols-12 gap-4">
       {/* Left: Persona + Past Library */}
@@ -239,7 +273,6 @@ export default function AbodeSmartApp() {
               <li key={`${d.name}-${i}`}>
                 <button
                   onClick={() => {
-                    // You can allow pre-view even before processing if desired:
                     openInViewer(d);
                     setSelectedDoc(d);
                   }}
@@ -269,6 +302,32 @@ export default function AbodeSmartApp() {
             </div>
           )}
         </div>
+
+        {/* NEW: Top 5 Relevant */}
+        {!!topRelevant.length && (
+          <div className="bg-white rounded-xl border p-3 mt-4">
+            <div className="font-semibold mb-2">Top 5 Relevant</div>
+            <ul className="space-y-2">
+              {topRelevant.map((item, idx) => (
+                <li key={idx} className="border rounded p-2 flex justify-between">
+                  <div className="min-w-0">
+                    <div className="font-medium truncate">
+                      {item.pdf_name} — p.{item.page_no}
+                    </div>
+                    <div className="text-sm italic truncate">{item.section_title}</div>
+                    <div className="text-sm text-gray-600 line-clamp-2">{item.sub_text}</div>
+                  </div>
+                  <button
+                    onClick={() => navigateToPage(item)}
+                    className="shrink-0 bg-blue-600 text-white px-2 py-1 rounded"
+                  >
+                    Navigate
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
       </div>
 
       {/* Right: Viewer */}
@@ -283,7 +342,6 @@ export default function AbodeSmartApp() {
           <div id="adobe-dc-view" className="h-[600px] border rounded" />
         </div>
 
-        {/* Relevant sections panel (will be filled from backend later) */}
         {!!relevantSections.length && (
           <div className="bg-white rounded-xl border p-3">
             <div className="font-semibold mb-2">Relevant Sections</div>
@@ -300,10 +358,7 @@ export default function AbodeSmartApp() {
                   </div>
                   <button
                     onClick={() =>
-                      setSelectedDoc(
-                        // you’ll map PDF_name to url from lists; for now stub:
-                        { name: s.PDF_name, url: absUrl(s.PDF_name) }
-                      ) || openInViewer({ name: s.PDF_name, url: absUrl(s.PDF_name) })
+                      navigateToPage({ pdf_name: s.PDF_name, page_no: s.page_no })
                     }
                     className="shrink-0 bg-blue-600 text-white px-2 py-1 rounded"
                   >
