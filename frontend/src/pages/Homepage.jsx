@@ -19,6 +19,12 @@ export default function AbodeSmartApp() {
   const viewerApiRef = useRef(null);
   const [adobeReady, setAdobeReady] = useState(false);
 
+  const [selectedText, setSelectedText] = useState(""); // To store the latest selected text
+  const [insights, setInsights] = useState(null);
+  const [podcastUrl, setPodcastUrl] = useState(null);
+  const [isLoadingInsights, setIsLoadingInsights] = useState(false);
+  const [isLoadingPodcast, setIsLoadingPodcast] = useState(false);
+
   const qs = (obj) => new URLSearchParams(obj).toString();
   const absUrl = (name) => `${API_BASE}/PDFs/${encodeURIComponent(name)}`;
 
@@ -90,45 +96,108 @@ export default function AbodeSmartApp() {
     window.adobe_dc_view_sdk.ready = () => setAdobeReady(true);
   }, []);
 
-  // Handle text selection API call
-  // Handle text selection API call
-const handleTextSelection = async (docName, pageNumber, selectedText) => { // Updated to accept all params
-  console.log("Selected text:", selectedText);
-  try {
-    const res = await fetch(`${API_BASE}/select-text`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        session_id: sessionId,
-        selected_text: selectedText,
-      }),
-    });
-    const responseData = await res.json();
+  const handleTextSelection = async (docName, pageNumber, selectedText) => {
+    console.log("Selected text:", selectedText);
+    try {
+      const res = await fetch(`${API_BASE}/select-text`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          session_id: sessionId,
+          selected_text: selectedText,
+        }),
+      });
+      const responseData = await res.json();
 
-    // CORRECTLY EXTRACT the nested array
-    const sections = responseData?.data?.extracted_sections;
-    console.log("Relevant sections:", sections);
+      const sections = responseData?.data?.extracted_sections;
+      console.log("Relevant sections:", sections);
 
-    if (Array.isArray(sections) && sections.length) {
-      console.log("Setting relevant sections:", sections);
-      setRelevantSections(sections);  
-      console.log(relevantSections);
+      if (Array.isArray(sections) && sections.length) {
+        console.log("Setting relevant sections:", sections);
+        setRelevantSections(sections);
+      } else {
+        console.log("No relevant sections found in response");
+        setRelevantSections([]);
+      }
+    } catch (err) {
+      console.error("Error fetching relevant sections:", err);
     }
-    else {
-      console.log("No relevant sections found in response");
-      setRelevantSections([]);
+  };
+
+  const handleGetRelevantContentClick = async () => {
+    console.log("Get selected content clicked");
+    if (!viewerApiRef.current) return;
+    try {
+      const result = await viewerApiRef.current.getSelectedContent();
+      if (result?.data) {
+        setSelectedText(result.data); // Store the selected text for other features
+        handleTextSelection(selectedDoc?.name, result.pageNumber || 1, result.data);
+      } else {
+        alert("No text selected in the PDF!");
+      }
+    } catch (err) {
+      console.error("getSelectedContent error:", err);
+    }
+  };
+
+  const handleInsightsClick = async () => {
+    if (!selectedText || !sessionId) return;
+    setIsLoadingInsights(true);
+    setInsights(null); // Clear previous insights
+    try {
+      const res = await fetch(`${API_BASE}/insights`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ session_id: sessionId, selected_text: selectedText }),
+      });
+      const data = await res.json();
+      setInsights(data);
+    } catch (err) {
+      console.error("Error fetching insights:", err);
+    } finally {
+      setIsLoadingInsights(false);
+    }
+  };
+
+  const handlePodcastClick = async () => {
+    if (!selectedText || !sessionId) return;
+    setIsLoadingPodcast(true);
+    setPodcastUrl(null); // Clear previous podcast
+    try {
+      const res = await fetch(`${API_BASE}/podcast`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ session_id: sessionId, selected_text: selectedText }),
+      });
+      const audioBlob = await res.blob();
+      const url = URL.createObjectURL(audioBlob); // Create a temporary URL for the audio
+      setPodcastUrl(url);
+    } catch (err) {
+      console.error("Error fetching podcast:", err);
+    } finally {
+      setIsLoadingPodcast(false);
+    }
+  };
+
+  const navigateToPage = async (section) => {
+    if (selectedDoc?.name !== section.pdfName) {
+      const docToOpen = { name: section.pdfName, url: absUrl(section.pdfName) };
+      setSelectedDoc(docToOpen);
+      await openInViewer(docToOpen);
     }
 
-  } catch (err) {
-    console.error("Error fetching relevant sections:", err);
-  }
-};
-
-  const navigateToPage = async (item) => {
-    setSelectedDoc({ name: item.pdf_name, url: absUrl(item.pdf_name) });
-    await openInViewer({ name: item.pdf_name, url: absUrl(item.pdf_name) });
-    if (viewerApiRef.current?.gotoLocation) {
-      viewerApiRef.current.gotoLocation(item.page_no);
+    if (viewerApiRef.current) {
+      try {
+        await viewerApiRef.current.gotoLocation(section.pageNo);
+        if (viewerApiRef.current.search && section.title) {
+          await viewerApiRef.current.search(section.title, { caseSensitive: true });
+        }
+      } catch (error) {
+        console.error("Error during navigation or text search:", error);
+        if (viewerApiRef.current.gotoLocation) {
+            viewerApiRef.current.gotoLocation(section.pageNo);
+        }
+      }
     }
   };
 
@@ -136,20 +205,17 @@ const handleTextSelection = async (docName, pageNumber, selectedText) => { // Up
     if (!adobeReady || !doc?.url) return;
 
     const adobeView = new window.AdobeDC.View({
-      clientId:
-        import.meta.env.VITE_ADOBE_EMBED_API_KEY || process.env.REACT_APP_ADOBE_EMBED_API_KEY,
+      clientId: import.meta.env.VITE_ADOBE_EMBED_API_KEY || process.env.REACT_APP_ADOBE_EMBED_API_KEY,
       divId: "adobe-dc-view",
     });
 
     try {
-      // Await the promise and assign its resolved value directly to 'viewer'
       const viewer = await adobeView.previewFile(
         {
           content: { location: { url: doc.url } },
           metaData: { fileName: doc.name, id: doc.name },
         },
         {
-          // Viewer options
           showAnnotationTools: true,
           enableAnnotationAPIs: true,
           includePDFAnnotations: true,
@@ -159,14 +225,12 @@ const handleTextSelection = async (docName, pageNumber, selectedText) => { // Up
           enableTextSelection: true,
         }
       );
-
-      // 'viewer' is now defined and in scope here
       const apis = await viewer.getAPIs();
       viewerApiRef.current = apis;
     } catch (error) {
       console.error("Error loading PDF in viewer:", error);
     }
-  };    
+  };
 
   useEffect(() => {
     const onClose = () => {
@@ -216,7 +280,7 @@ const handleTextSelection = async (docName, pageNumber, selectedText) => { // Up
             type="file"
             multiple
             onChange={(e) => uploadPast(Array.from(e.target.files || []))}
-            className="mb-2"
+            className="mb-2 w-full text-sm"
           />
           <ul className="max-h-60 overflow-auto space-y-1">
             {pastDocs.map((d, i) => (
@@ -246,7 +310,7 @@ const handleTextSelection = async (docName, pageNumber, selectedText) => { // Up
             type="file"
             multiple
             onChange={(e) => uploadCurrent(Array.from(e.target.files || []))}
-            className="mb-2"
+            className="mb-2 w-full text-sm"
           />
           <ul className="max-h-60 overflow-auto space-y-1">
             {currentDocs.map((d, i) => (
@@ -279,7 +343,6 @@ const handleTextSelection = async (docName, pageNumber, selectedText) => { // Up
           )}
         </div>
 
-        {/* NEW: Top 5 Relevant */}
         {!!topRelevant.length && (
           <div className="bg-white rounded-xl border p-3 mt-4">
             <div className="font-semibold mb-2">Top 5 Relevant</div>
@@ -306,69 +369,102 @@ const handleTextSelection = async (docName, pageNumber, selectedText) => { // Up
         )}
       </div>
 
-      {/* Right: Viewer */}
+      {/* Right: Viewer and Results */}
       <div className="col-span-6 space-y-4">
-        <div className="bg-white rounded-xl border p-3 relative">
-        <div className="flex items-center justify-between mb-2">
-          <div className="font-semibold">PDF Viewer</div>
-          <div className="text-xs text-gray-500">
-            {processing ? "processing…" : selectedDoc ? selectedDoc.name : "idle"}
-          </div>
-        </div>
-
-        {/* Floating Button */}
-        <button
-          onClick={async () => {
-            console.log("Get selected content clicked");
-            if (!viewerApiRef.current) return;
-            try {
-              const result = await viewerApiRef.current.getSelectedContent();
-              console.log("Manual selection:", result);
-              if (result?.data) {
-                handleTextSelection(selectedDoc?.name, result.pageNumber || 1, result.data);
-              } else {
-                alert("No text selected in the PDF!");
-              }
-            } catch (err) {
-              console.error("getSelectedContent error:", err);
-            }
-          }}
-          className="absolute top-2 right-2 bg-blue-600 text-white px-3 py-1 rounded shadow-lg hover:bg-blue-700"
-        >
-          Get Relevant Content
-        </button>
-
-        <div id="adobe-dc-view" className="h-[600px] border rounded" />
-      </div>
-
-      {!!relevantSections.length && (
         <div className="bg-white rounded-xl border p-3">
-          <div className="font-semibold mb-2">Relevant Sections</div>
-          <div className="space-y-2">
-            {relevantSections.map((s, idx) => (
-              <div
-                key={idx}
-                className="border rounded p-2 flex items-start justify-between gap-3"
-              >
-                <div className="min-w-0">
-                  {/* USE CORRECT property names for display */}
-                  <div className="font-medium truncate">
-                    {s.pdfName} — p.{s.pageNo}
-                  </div>
-                  <div className="text-sm italic truncate">{s.title}</div>
-                  <div className="text-sm text-gray-600 line-clamp-3">{s.snippet}</div>
+          <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center gap-4">
+                <div className="font-semibold">PDF Viewer</div>
+                <div className="text-xs text-gray-500">
+                    {processing ? "processing…" : selectedDoc ? selectedDoc.name : "idle"}
                 </div>
-                <button
-                  onClick={() =>
-                    // PASS CORRECT property names to the navigation function
-                    navigateToPage({ pdf_name: s.pdfName, page_no: s.pageNo })
-                  }
-                  className="shrink-0 bg-blue-600 text-white px-2 py-1 rounded"
-                >
-                  Navigate
-                </button>
-              </div>
-            ))}
+            </div>
+            <div className="flex items-center gap-2">
+              <button onClick={handleInsightsClick} disabled={!selectedText || isLoadingInsights} className="p-2 rounded-full hover:bg-gray-200 disabled:opacity-50" title="Generate Insights">
+                {isLoadingInsights ? "..." : "💡"}
+              </button>
+              <button onClick={handlePodcastClick} disabled={!selectedText || isLoadingPodcast} className="p-2 rounded-full hover:bg-gray-200 disabled:opacity-50" title="Generate Audio Overview">
+                {isLoadingPodcast ? "..." : "🎙️"}
+              </button>
+              <button
+                onClick={handleGetRelevantContentClick}
+                className="bg-blue-600 text-white px-3 py-1 rounded text-sm hover:bg-blue-700"
+              >
+                Get Relevant Content
+              </button>
+            </div>
+          </div>
+          <div id="adobe-dc-view" className="h-[600px] border rounded" />
+        </div>
+        
+        {insights && (
+          <div className="bg-white rounded-xl border p-4 relative animate-fade-in">
+            <button onClick={() => setInsights(null)} className="absolute top-2 right-3 text-gray-500 hover:text-gray-800 text-xl font-bold">&times;</button>
+            <h3 className="font-semibold text-lg mb-2">Insights ✨</h3>
+            <div>
+              {insights.key_takeaways && (
+                  <>
+                    <h4 className="font-bold mt-2">Key Takeaways</h4>
+                    <ul className="list-disc list-inside text-sm text-gray-700">
+                      {insights.key_takeaways.map((item, i) => <li key={i}>{item}</li>)}
+                    </ul>
+                  </>
+              )}
+              {insights.did_you_know && (
+                  <>
+                    <h4 className="font-bold mt-3">Did You Know?</h4>
+                    <p className="text-sm text-gray-700">{insights.did_you_know}</p>
+                  </>
+              )}
+               {insights.counterpoint && (
+                  <>
+                    <h4 className="font-bold mt-3">Counterpoint</h4>
+                    <p className="text-sm text-gray-700">{insights.counterpoint}</p>
+                  </>
+              )}
+              {insights.inspiration && (
+                  <>
+                    <h4 className="font-bold mt-3">Inspiration</h4>
+                    <p className="text-sm text-gray-700">{insights.inspiration}</p>
+                  </>
+              )}
+            </div>
+          </div>
+        )}
+
+        {podcastUrl && (
+          <div className="bg-white rounded-xl border p-4 relative animate-fade-in">
+            <button onClick={() => setPodcastUrl(null)} className="absolute top-2 right-3 text-gray-500 hover:text-gray-800 text-xl font-bold">&times;</button>
+            <h3 className="font-semibold text-lg mb-2">Audio Overview 🎧</h3>
+            <audio controls autoPlay src={podcastUrl} className="w-full mt-2">
+              Your browser does not support the audio element.
+            </audio>
+          </div>
+        )}
+
+        {!!relevantSections.length && (
+          <div className="bg-white rounded-xl border p-3">
+            <div className="font-semibold mb-2">Relevant Sections</div>
+            <div className="space-y-2">
+              {relevantSections.map((s, idx) => (
+                <div key={idx} className="border rounded p-2 flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="font-medium truncate">
+                      {s.pdfName} — p.{s.pageNo}
+                    </div>
+                    <div className="text-sm italic truncate">{s.title}</div>
+                    <div className="text-sm text-gray-600 line-clamp-3">{s.snippet}</div>
+                  </div>
+                  <button
+                    onClick={() =>
+                      navigateToPage(s)
+                    }
+                    className="shrink-0 bg-blue-600 text-white px-2 py-1 rounded text-sm"
+                  >
+                    Navigate
+                  </button>
+                </div>
+              ))}
             </div>
           </div>
         )}
