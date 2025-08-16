@@ -91,18 +91,19 @@ export default function AbodeSmartApp() {
   }, []);
 
   // Handle text selection API call
-  const handleTextSelection = async (pdfName, pageNo, selectedText) => {
+  const handleTextSelection = async (selectedText) => {
+    console.log("Selected text:", selectedText);
     try {
       const res = await fetch(`${API_BASE}/select-text`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          pdf_name: pdfName,
-          page_no: pageNo,
+          session_id: sessionId,
           selected_text: selectedText,
         }),
       });
       const data = await res.json();
+      console.log("Text selection response:", data);
       if (Array.isArray(data) && data.length) {
         updateRelevantList(data);
       }
@@ -156,14 +157,14 @@ export default function AbodeSmartApp() {
       .then((viewer) => {
         viewer.getAPIs().then((apis) => {
           viewerApiRef.current = apis;
-
+          // You can still listen to the event if you want
           apis.addEventListener(window.AdobeDC.View.Enum.Events.TEXT_SELECT, (event) => {
-            if (event.data?.selectedText) {
-              handleTextSelection(doc.name, event.data.pageNumber, event.data.selectedText);
-            }
-          });
+          if (event.data?.selectedText) {
+            handleTextSelection(doc.name, event.data.pageNumber, event.data.selectedText);
+          }
         });
       });
+    });                              
   };
 
   useEffect(() => {
@@ -306,15 +307,39 @@ export default function AbodeSmartApp() {
 
       {/* Right: Viewer */}
       <div className="col-span-6 space-y-4">
-        <div className="bg-white rounded-xl border p-3">
-          <div className="flex items-center justify-between mb-2">
-            <div className="font-semibold">PDF Viewer</div>
-            <div className="text-xs text-gray-500">
-              {processing ? "processing…" : selectedDoc ? selectedDoc.name : "idle"}
-            </div>
+        <div className="bg-white rounded-xl border p-3 relative">
+        <div className="flex items-center justify-between mb-2">
+          <div className="font-semibold">PDF Viewer</div>
+          <div className="text-xs text-gray-500">
+            {processing ? "processing…" : selectedDoc ? selectedDoc.name : "idle"}
           </div>
-          <div id="adobe-dc-view" className="h-[600px] border rounded" />
         </div>
+
+        {/* Floating Button */}
+        <button
+          onClick={async () => {
+            console.log("Get selected content clicked");
+            if (!viewerApiRef.current) return;
+            try {
+              const result = await viewerApiRef.current.getSelectedContent();
+              console.log("Manual selection:", result);
+              if (result?.data) {
+                handleTextSelection(selectedDoc?.name, result.pageNumber || 1, result.data);
+              } else {
+                alert("No text selected in the PDF!");
+              }
+            } catch (err) {
+              console.error("getSelectedContent error:", err);
+            }
+          }}
+          className="absolute top-2 right-2 bg-blue-600 text-white px-3 py-1 rounded shadow-lg hover:bg-blue-700"
+        >
+          Get Relevant Content
+        </button>
+
+        <div id="adobe-dc-view" className="h-[600px] border rounded" />
+      </div>
+
 
         {!!relevantSections.length && (
           <div className="bg-white rounded-xl border p-3">
