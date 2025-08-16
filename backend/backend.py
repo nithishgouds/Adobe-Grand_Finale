@@ -161,8 +161,12 @@ async def select_text(request: TextSelectionRequest):
 
 @app.post("/end-session")
 async def end_session(session_id: str):
-    clear_session_folder(session_id)
-    return {"message": f"Session {session_id} ended and files deleted."}
+    folder_path = Path("round1b")
+    if folder_path.exists() and folder_path.is_dir():
+        shutil.rmtree(folder_path)   # deletes the folder and everything inside
+    SESSION_FOLDERS.pop(session_id, None)
+    folder_path.mkdir(parents=True, exist_ok=True)
+    return {"message": f"Session {session_id} ended and folder round1b deleted."}
 
 
 @app.post("/insights")
