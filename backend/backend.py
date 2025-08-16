@@ -90,9 +90,9 @@ async def upload_current_doc(pdf: UploadFile = File(...), session_id: str = Quer
 
 
 @app.post("/select-text")
-async def select_text(request: TextSelectionRequest):
+async def select_text(session_id: str, selected_text: str ):
     print(
-        f"Received text selection for session {request.session_id}: '{request.selected_text}'")
+        f"Received text selection for session {session_id}: '{selected_text}'")
     return {
         "data": {
             "extracted_sections": [
@@ -100,7 +100,7 @@ async def select_text(request: TextSelectionRequest):
                     "pdfName": "example_past_doc.pdf",
                     "pageNo": 5,
                     "title": "Analysis of Selected Text",
-                    "snippet": f"This section in a past document provides details on '{request.selected_text}'..."
+                    "snippet": f"This section in a past document provides details on '{selected_text}'..."
                 }
             ]
         }
