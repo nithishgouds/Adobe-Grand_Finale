@@ -61,7 +61,7 @@ async def upload_past_docs(pdfs: List[UploadFile] = File(...)):
         try:
             subprocess.run(
                 [
-                    "C:/Users/chitr/Documents/GitHub/Adobe-Finale/backend/venv/Scripts/python.exe", "save_pdfs.py",
+                    "python", "save_pdfs.py",
                     "--pdf_folder", str(folder_path),
                     "--session_id", session_id
                 ],
@@ -94,7 +94,7 @@ async def upload_current_doc(pdf: UploadFile = File(...), session_id: str = Quer
         try:
             subprocess.run(
                 [
-                    "C:/Users/chitr/Documents/GitHub/Adobe-Finale/backend/venv/Scripts/python.exe",
+                    "python",
                     "save_pdfs.py",
                     "--pdf_folder", str(folder_path),
                     "--session_id", session_id
