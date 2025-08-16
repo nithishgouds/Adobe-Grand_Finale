@@ -8,10 +8,10 @@ import numpy as np
 INDEX_PATH = Path("round1b") / "mysession_index.faiss"
 MAPPING_PATH = Path("round1b") / "mysession_metadata.json"
 
-model = SentenceTransformer("intfloat/e5-base-v2")
+model = SentenceTransformer("intfloat/e5-small-v2")
 print("relevant_pages ....loading")
 
-def get_relevant_pages(query_text: str, top_k: int = 5):
+def get_relevant_pages(query_text: str, top_k: int = 3):
     print("now in the relevant pages .py file")
 
     if not INDEX_PATH.exists() or not MAPPING_PATH.exists():
@@ -20,36 +20,27 @@ def get_relevant_pages(query_text: str, top_k: int = 5):
     index = faiss.read_index(str(INDEX_PATH))
 
     with open(MAPPING_PATH, "r", encoding="utf-8") as f:
-        index_mapping = json.load(f)
+        index_mapping = json.load(f)  # list of dicts
 
+    # normalize for cosine similarity
     query_embedding = model.encode([query_text], normalize_embeddings=True)
     query_embedding = np.array(query_embedding).astype("float32")
 
-    # Search more than top_k to allow filtering duplicates
-    search_k = top_k * 3
-    scores, indices = index.search(query_embedding, search_k)
+    scores, indices = index.search(query_embedding, top_k)
 
     results = []
-    seen_snippets = set()
-    selected_text_normalized = " ".join(query_text.strip().split())
-
     for idx, score in zip(indices[0], scores[0]):
         if 0 <= idx < len(index_mapping):
             entry = index_mapping[idx]
-            snippet = entry.get("content", "").strip()
-            snippet_normalized = " ".join(snippet.split())
-            if snippet_normalized != selected_text_normalized and snippet_normalized not in seen_snippets:
-                seen_snippets.add(snippet_normalized)
-                results.append({
-                    "pdfName": entry["document"],
-                    "pageNo": entry["page"],
-                    "title": entry.get("title", f"Match for '{query_text}'"),
-                    "snippet": snippet[:200] + "...",
-                    "score": float(score)
-                })
-        if len(results) >= top_k:
-            break
+            results.append({
+                "pdfName": entry["document"],
+                "pageNo": entry["page"],
+                "title": entry.get("title", f"Match for '{query_text}'"),
+                "snippet": entry.get("content", "")[:200] + "...",
+                "score": float(score)  # cosine similarity, closer to 1.0 = better
+            })
 
+    # sort explicitly (descending cosine similarity)
     results.sort(key=lambda x: x["score"], reverse=True)
 
     print("🔎 Top results:", json.dumps(results, indent=2, ensure_ascii=False))
