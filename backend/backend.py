@@ -61,7 +61,7 @@ async def upload_past_docs(pdfs: List[UploadFile] = File(...)):
         try:
             subprocess.run(
                 [
-                    "python", "save_pdfs.py",
+                    "C:/Users/chitr/Documents/GitHub/Adobe-Finale/backend/venv/Scripts/python.exe", "save_pdfs.py",
                     "--pdf_folder", str(folder_path),
                     "--session_id", session_id
                 ],
@@ -94,7 +94,7 @@ async def upload_current_doc(pdf: UploadFile = File(...), session_id: str = Quer
         try:
             subprocess.run(
                 [
-                    "python",
+                    "C:/Users/chitr/Documents/GitHub/Adobe-Finale/backend/venv/Scripts/python.exe",
                     "save_pdfs.py",
                     "--pdf_folder", str(folder_path),
                     "--session_id", session_id
@@ -114,13 +114,12 @@ async def upload_current_doc(pdf: UploadFile = File(...), session_id: str = Quer
         return {"error": str(e)}
 
 
-
 @app.post("/select-text")
 async def select_text(request: TextSelectionRequest):
     try:
         session_id = request.session_id
         selected_text = request.selected_text.strip()
-        
+
         print("calling relevant pages from select text")
 
         if session_id not in SESSION_FOLDERS:

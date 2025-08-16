@@ -91,45 +91,48 @@ export default function AbodeSmartApp() {
   }, []);
 
   // Handle text selection API call
-  const handleTextSelection = async (selectedText) => {
-    console.log("Selected text:", selectedText);
-    try {
-      const res = await fetch(`${API_BASE}/select-text`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          session_id: sessionId,
-          selected_text: selectedText,
-        }),
-      });
-      const data = await res.json();
-      console.log("Text selection response:", data);
-      if (Array.isArray(data) && data.length) {
-        updateRelevantList(data);
-      }
-    } catch (err) {
-      console.error("Error fetching top relevant:", err);
-    }
-  };
+  // Handle text selection API call
+const handleTextSelection = async (docName, pageNumber, selectedText) => { // Updated to accept all params
+  console.log("Selected text:", selectedText);
+  try {
+    const res = await fetch(`${API_BASE}/select-text`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        session_id: sessionId,
+        selected_text: selectedText,
+      }),
+    });
+    const responseData = await res.json();
 
-  const updateRelevantList = (list) => {
-    setTopRelevant(list);
-    if (list.length > 0) {
-      navigateToPage(list[0]);
-    }
-  };
+    // CORRECTLY EXTRACT the nested array
+    const sections = responseData?.data?.extracted_sections;
+    console.log("Relevant sections:", sections);
 
-  const navigateToPage = (item) => {
-    openInViewer({ name: item.pdf_name, url: absUrl(item.pdf_name) });
+    if (Array.isArray(sections) && sections.length) {
+      console.log("Setting relevant sections:", sections);
+      setRelevantSections(sections);  
+      console.log(relevantSections);
+    }
+    else {
+      console.log("No relevant sections found in response");
+      setRelevantSections([]);
+    }
+
+  } catch (err) {
+    console.error("Error fetching relevant sections:", err);
+  }
+};
+
+  const navigateToPage = async (item) => {
     setSelectedDoc({ name: item.pdf_name, url: absUrl(item.pdf_name) });
-    setTimeout(() => {
-      if (viewerApiRef.current?.gotoLocation) {
-        viewerApiRef.current.gotoLocation(item.page_no);
-      }
-    }, 500);
+    await openInViewer({ name: item.pdf_name, url: absUrl(item.pdf_name) });
+    if (viewerApiRef.current?.gotoLocation) {
+      viewerApiRef.current.gotoLocation(item.page_no);
+    }
   };
 
-  const openInViewer = (doc) => {
+  const openInViewer = async (doc) => {
     if (!adobeReady || !doc?.url) return;
 
     const adobeView = new window.AdobeDC.View({
@@ -138,13 +141,15 @@ export default function AbodeSmartApp() {
       divId: "adobe-dc-view",
     });
 
-    adobeView
-      .previewFile(
+    try {
+      // Await the promise and assign its resolved value directly to 'viewer'
+      const viewer = await adobeView.previewFile(
         {
           content: { location: { url: doc.url } },
           metaData: { fileName: doc.name, id: doc.name },
         },
         {
+          // Viewer options
           showAnnotationTools: true,
           enableAnnotationAPIs: true,
           includePDFAnnotations: true,
@@ -153,19 +158,15 @@ export default function AbodeSmartApp() {
           enableSearchAPIs: true,
           enableTextSelection: true,
         }
-      )
-      .then((viewer) => {
-        viewer.getAPIs().then((apis) => {
-          viewerApiRef.current = apis;
-          // You can still listen to the event if you want
-          apis.addEventListener(window.AdobeDC.View.Enum.Events.TEXT_SELECT, (event) => {
-          if (event.data?.selectedText) {
-            handleTextSelection(doc.name, event.data.pageNumber, event.data.selectedText);
-          }
-        });
-      });
-    });                              
-  };
+      );
+
+      // 'viewer' is now defined and in scope here
+      const apis = await viewer.getAPIs();
+      viewerApiRef.current = apis;
+    } catch (error) {
+      console.error("Error loading PDF in viewer:", error);
+    }
+  };    
 
   useEffect(() => {
     const onClose = () => {
@@ -340,33 +341,34 @@ export default function AbodeSmartApp() {
         <div id="adobe-dc-view" className="h-[600px] border rounded" />
       </div>
 
-
-        {!!relevantSections.length && (
-          <div className="bg-white rounded-xl border p-3">
-            <div className="font-semibold mb-2">Relevant Sections</div>
-            <div className="space-y-2">
-              {relevantSections.map((s, idx) => (
-                <div
-                  key={idx}
-                  className="border rounded p-2 flex items-start justify-between gap-3"
-                >
-                  <div className="min-w-0">
-                    <div className="font-medium truncate">
-                      {s.PDF_name} — p.{s.page_no}
-                    </div>
-                    <div className="text-sm italic truncate">{s.Section_title}</div>
-                    <div className="text-sm text-gray-600 line-clamp-3">{s.Snippet}</div>
+      {!!relevantSections.length && (
+        <div className="bg-white rounded-xl border p-3">
+          <div className="font-semibold mb-2">Relevant Sections</div>
+          <div className="space-y-2">
+            {relevantSections.map((s, idx) => (
+              <div
+                key={idx}
+                className="border rounded p-2 flex items-start justify-between gap-3"
+              >
+                <div className="min-w-0">
+                  {/* USE CORRECT property names for display */}
+                  <div className="font-medium truncate">
+                    {s.pdfName} — p.{s.pageNo}
                   </div>
-                  <button
-                    onClick={() =>
-                      navigateToPage({ pdf_name: s.PDF_name, page_no: s.page_no })
-                    }
-                    className="shrink-0 bg-blue-600 text-white px-2 py-1 rounded"
-                  >
-                    Navigate
-                  </button>
+                  <div className="text-sm italic truncate">{s.title}</div>
+                  <div className="text-sm text-gray-600 line-clamp-3">{s.snippet}</div>
                 </div>
-              ))}
+                <button
+                  onClick={() =>
+                    // PASS CORRECT property names to the navigation function
+                    navigateToPage({ pdf_name: s.pdfName, page_no: s.pageNo })
+                  }
+                  className="shrink-0 bg-blue-600 text-white px-2 py-1 rounded"
+                >
+                  Navigate
+                </button>
+              </div>
+            ))}
             </div>
           </div>
         )}
