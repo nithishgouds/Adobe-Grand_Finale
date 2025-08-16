@@ -7,6 +7,7 @@ from pathlib import Path
 import shutil
 import subprocess
 import uuid
+from relevant_pages import get_relevant_pages
 
 PDF_FOLDER = Path("round1b") / "PDFs"
 PDF_FOLDER.mkdir(parents=True, exist_ok=True)
@@ -60,7 +61,7 @@ async def upload_past_docs(pdfs: List[UploadFile] = File(...)):
         try:
             subprocess.run(
                 [
-                    "C:/Users/chitr/Documents/GitHub/Adobe-Finale/backend/venv/Scripts/python.exe", "save_pdfs.py",
+                    "python", "save_pdfs.py",
                     "--pdf_folder", str(folder_path),
                     "--session_id", session_id
                 ],
@@ -82,29 +83,72 @@ async def upload_current_doc(pdf: UploadFile = File(...), session_id: str = Quer
     try:
         folder_path = SESSION_FOLDERS[session_id]
         file_path = folder_path / pdf.filename
+
+        # Save current PDF
         with open(file_path, "wb") as buffer:
             shutil.copyfileobj(pdf.file, buffer)
-        return {"message": "Current document uploaded successfully", "filename": pdf.filename}
+
+        print(f"✅ Current doc saved: {file_path}")
+
+        # Call save_pdfs.py to update FAISS with the new document
+        try:
+            subprocess.run(
+                [
+                    "python",
+                    "save_pdfs.py",
+                    "--pdf_folder", str(folder_path),
+                    "--session_id", session_id
+                ],
+                check=True
+            )
+            print("📂 save_pdfs.py executed successfully for current doc.")
+        except subprocess.CalledProcessError as e:
+            print(f"⚠ Error while running save_pdfs.py for current doc: {e}")
+            return {"error": "Failed to process current document."}
+
+        return {
+            "message": "Current document uploaded and indexed successfully",
+            "filename": pdf.filename
+        }
     except Exception as e:
         return {"error": str(e)}
 
 
+
 @app.post("/select-text")
-async def select_text(session_id: str, selected_text: str ):
-    print(
-        f"Received text selection for session {session_id}: '{selected_text}'")
-    return {
-        "data": {
-            "extracted_sections": [
-                {
-                    "pdfName": "example_past_doc.pdf",
-                    "pageNo": 5,
-                    "title": "Analysis of Selected Text",
-                    "snippet": f"This section in a past document provides details on '{selected_text}'..."
+async def select_text(request: TextSelectionRequest):
+    try:
+        session_id = request.session_id
+        selected_text = request.selected_text.strip()
+        
+        print("calling relevant pages from select text")
+
+        if session_id not in SESSION_FOLDERS:
+            return {"error": "Invalid or missing session ID. Please upload documents first."}
+
+        # Call FAISS search
+        results = get_relevant_pages(selected_text, top_k=3)
+
+        print("relevant text from select text....")
+        if not results:
+            return {
+                "data": {
+                    "extracted_sections": [
+                        {
+                            "pdfName": "N/A",
+                            "pageNo": -1,
+                            "title": "No Matches Found",
+                            "snippet": f"No relevant content found for '{selected_text}'.",
+                            "score": None
+                        }
+                    ]
                 }
-            ]
-        }
-    }
+            }
+
+        return {"data": {"extracted_sections": results}}
+
+    except Exception as e:
+        return {"error": str(e)}
 
 
 @app.post("/end-session")
