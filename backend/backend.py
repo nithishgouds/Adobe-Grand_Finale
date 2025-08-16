@@ -126,7 +126,7 @@ async def select_text(request: TextSelectionRequest):
             return {"error": "Invalid or missing session ID. Please upload documents first."}
 
         # Call FAISS search
-        results = get_relevant_pages(selected_text, top_k=3)
+        results = get_relevant_pages(selected_text, top_k=5)
 
         print("relevant text from select text....")
         if not results:

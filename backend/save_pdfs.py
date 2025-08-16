@@ -167,7 +167,7 @@ def load_index_and_metadata(index_path, meta_path, dim):
     return index, metadata
 
 def build_faiss_index(pdf_folder, session_id):
-    model = SentenceTransformer("intfloat/e5-small-v2")
+    model = SentenceTransformer("intfloat/e5-base-v2")
     dim = model.get_sentence_embedding_dimension()
     parent_folder = os.path.abspath(os.path.join(pdf_folder, os.pardir))
     index_path = os.path.join(parent_folder, "mysession_index.faiss")
