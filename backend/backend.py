@@ -8,12 +8,21 @@ import shutil
 import subprocess
 import uuid
 from relevant_pages import get_relevant_pages
+import google.generativeai as genai
+import os
+import json
+from dotenv import load_dotenv
+
+load_dotenv()
 
 PDF_FOLDER = Path("round1b") / "PDFs"
 PDF_FOLDER.mkdir(parents=True, exist_ok=True)
 SESSION_FOLDERS = {}
 
 app = FastAPI()
+
+genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
+model = genai.GenerativeModel("gemini-2.5-flash")
 
 app.add_middleware(
     CORSMiddleware,
@@ -61,7 +70,7 @@ async def upload_past_docs(pdfs: List[UploadFile] = File(...)):
         try:
             subprocess.run(
                 [
-                    "python", "save_pdfs.py",
+                    "C:/Users/chitr/Documents/GitHub/Adobe-Finale/backend/venv/Scripts/python.exe", "save_pdfs.py",
                     "--pdf_folder", str(folder_path),
                     "--session_id", session_id
                 ],
@@ -94,7 +103,7 @@ async def upload_current_doc(pdf: UploadFile = File(...), session_id: str = Quer
         try:
             subprocess.run(
                 [
-                    "python",
+                    "C:/Users/chitr/Documents/GitHub/Adobe-Finale/backend/venv/Scripts/python.exe",
                     "save_pdfs.py",
                     "--pdf_folder", str(folder_path),
                     "--session_id", session_id
@@ -126,7 +135,7 @@ async def select_text(request: TextSelectionRequest):
             return {"error": "Invalid or missing session ID. Please upload documents first."}
 
         # Call FAISS search
-        results = get_relevant_pages(selected_text, top_k=5)
+        results = get_relevant_pages(selected_text, top_k=3)
 
         print("relevant text from select text....")
         if not results:
@@ -154,3 +163,63 @@ async def select_text(request: TextSelectionRequest):
 async def end_session(session_id: str):
     clear_session_folder(session_id)
     return {"message": f"Session {session_id} ended and files deleted."}
+
+
+@app.post("/insights")
+async def get_insights(request: TextSelectionRequest):
+    session_id = request.session_id
+    selected_text = request.selected_text.strip()
+
+    if session_id not in SESSION_FOLDERS:
+        return {"error": "Invalid or missing session ID. Please upload documents first."}
+
+    try:
+        results = get_relevant_pages(selected_text, top_k=10)
+
+        if not results:
+            return {
+                "insights": [
+                    {
+                        "pdfName": "N/A",
+                        "pageNo": -1,
+                        "title": "No Matches Found",
+                        "snippet": f"No relevant content found for '{selected_text}'.",
+                        "score": None
+                    }
+                ]
+            }
+
+        prompt = f"""
+        You are an analytical assistant. Based ONLY on the following context, generate insights about "{selected_text}".
+
+        Context:
+        ---
+        {results}
+        ---
+
+        Generate a JSON object with the following keys:
+        - "key_takeaways": A list of 2-3 main points.
+        - "did_you_know": An interesting, lesser-known fact from the context.
+        - "counterpoint": A potential contradiction or alternative perspective mentioned in the context.
+        - "inspiration": A creative idea or connection between different parts of the context.
+
+        Do not use any information outside of the provided context.
+        """
+
+        response = model.generate_content(
+            prompt,
+            generation_config=genai.types.GenerationConfig(
+                response_mime_type="application/json"
+            )
+        )
+
+        try:
+            insights_json = json.loads(response.text)
+        except json.JSONDecodeError:
+            insights_json = {"raw_output": response.text}
+
+        # ✅ Flat response
+        return {"insights": insights_json}
+
+    except Exception as e:
+        return {"error": str(e)}

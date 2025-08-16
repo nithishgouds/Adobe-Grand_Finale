@@ -20,7 +20,7 @@ export default function AbodeSmartApp() {
   const [adobeReady, setAdobeReady] = useState(false);
 
   const [selectedText, setSelectedText] = useState(""); // To store the latest selected text
-  const [insights, setInsights] = useState(null);
+  const [insights, setInsights] = useState([]);
   const [podcastUrl, setPodcastUrl] = useState(null);
   const [isLoadingInsights, setIsLoadingInsights] = useState(false);
   const [isLoadingPodcast, setIsLoadingPodcast] = useState(false);
@@ -141,36 +141,69 @@ export default function AbodeSmartApp() {
   };
 
   const handleInsightsClick = async () => {
-    if (!selectedText || !sessionId) return;
     setIsLoadingInsights(true);
-    setInsights(null); // Clear previous insights
+    setInsights(null);
+
+    if (!viewerApiRef.current) return;
     try {
+      const result = await viewerApiRef.current.getSelectedContent();
+      const text = result?.data?.trim();
+      if (!text) {
+        alert("No text selected in the PDF!");
+        return;
+      }
+
+      setSelectedText(text);
+
+      if (!sessionId) return;
+      console.log("Selected text for insights:", text);
+
       const res = await fetch(`${API_BASE}/insights`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ session_id: sessionId, selected_text: selectedText }),
+        body: JSON.stringify({
+          session_id: sessionId,
+          selected_text: text, // use local variable
+        }),
       });
+
       const data = await res.json();
-      setInsights(data);
+      setInsights(data?.data?.insights || data?.insights || {});
     } catch (err) {
       console.error("Error fetching insights:", err);
     } finally {
       setIsLoadingInsights(false);
     }
   };
-
+    
   const handlePodcastClick = async () => {
-    if (!selectedText || !sessionId) return;
     setIsLoadingPodcast(true);
-    setPodcastUrl(null); // Clear previous podcast
+    setPodcastUrl(null);
+
+    if (!viewerApiRef.current) return;
     try {
+      const result = await viewerApiRef.current.getSelectedContent();
+      const text = result?.data?.trim();
+      if (!text) {
+        alert("No text selected in the PDF!");
+        return;
+      }
+
+      setSelectedText(text);
+
+      if (!sessionId) return;
+
       const res = await fetch(`${API_BASE}/podcast`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ session_id: sessionId, selected_text: selectedText }),
+        body: JSON.stringify({
+          session_id: sessionId,
+          selected_text: text, // use local variable
+        }),
       });
+
       const audioBlob = await res.blob();
-      const url = URL.createObjectURL(audioBlob); // Create a temporary URL for the audio
+      const url = URL.createObjectURL(audioBlob);
       setPodcastUrl(url);
     } catch (err) {
       console.error("Error fetching podcast:", err);
@@ -178,6 +211,7 @@ export default function AbodeSmartApp() {
       setIsLoadingPodcast(false);
     }
   };
+
 
   const navigateToPage = async (section) => {
     if (selectedDoc?.name !== section.pdfName) {
@@ -380,10 +414,10 @@ export default function AbodeSmartApp() {
                 </div>
             </div>
             <div className="flex items-center gap-2">
-              <button onClick={handleInsightsClick} disabled={!selectedText || isLoadingInsights} className="p-2 rounded-full hover:bg-gray-200 disabled:opacity-50" title="Generate Insights">
+              <button onClick={handleInsightsClick} className="p-2 rounded-full hover:bg-gray-200 disabled:opacity-50" title="Generate Insights">
                 {isLoadingInsights ? "..." : "💡"}
               </button>
-              <button onClick={handlePodcastClick} disabled={!selectedText || isLoadingPodcast} className="p-2 rounded-full hover:bg-gray-200 disabled:opacity-50" title="Generate Audio Overview">
+              <button onClick={handlePodcastClick} className="p-2 rounded-full hover:bg-gray-200 disabled:opacity-50" title="Generate Audio Overview">
                 {isLoadingPodcast ? "..." : "🎙️"}
               </button>
               <button
