@@ -3,88 +3,90 @@ import React, { useEffect, useRef, useState } from "react";
 const API_BASE = "http://127.0.0.1:8000";
 
 export default function AbodeSmartApp() {
-  const [persona, setPersona] = useState({ name: "", profession: "", task: "" });
-
+  const [persona, setPersona] = useState({ profession: "", task: "" });
   const [pastDocs, setPastDocs] = useState([]);
   const [currentDocs, setCurrentDocs] = useState([]);
   const [selectedDoc, setSelectedDoc] = useState(null);
-
   const [sessionId, setSessionId] = useState(null);
-  const [processing, setProcessing] = useState(false);
-  const [processed, setProcessed] = useState(false);
-
+  const [isProcessingPast, setIsProcessingPast] = useState(false);
+  const [isProcessedPast, setIsProcessedPast] = useState(false);
+  const [isProcessingCurrent, setIsProcessingCurrent] = useState(false);
   const [relevantSections, setRelevantSections] = useState([]);
-  const [topRelevant, setTopRelevant] = useState([]); // NEW: Top 5 relevant list
-
   const viewerApiRef = useRef(null);
   const [adobeReady, setAdobeReady] = useState(false);
-
-  const [selectedText, setSelectedText] = useState(""); // To store the latest selected text
-  const [insights, setInsights] = useState([]);
+  const [insights, setInsights] = useState(null);
   const [podcastUrl, setPodcastUrl] = useState(null);
   const [isLoadingInsights, setIsLoadingInsights] = useState(false);
   const [isLoadingPodcast, setIsLoadingPodcast] = useState(false);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const audioRef = useRef(null);
+  const [roleData, setRoleData] = useState(null);
+  const [isProcessingRole, setIsProcessingRole] = useState(false);
 
   const qs = (obj) => new URLSearchParams(obj).toString();
   const absUrl = (name) => `${API_BASE}/PDFs/${encodeURIComponent(name)}`;
-
-  const refreshListFromApi = async () => {
-    const res = await fetch(`${API_BASE}/list-pdfs?${qs({ session_id: sessionId || "" })}`);
-    const data = await res.json();
-    const files = (data?.files || []).map((f) => ({ name: f.name, url: f.url }));
-    // setPastDocs(files) // If needed
-  };
 
   const uploadPast = async (files) => {
     if (!files?.length) return;
     const form = new FormData();
     files.forEach((f) => form.append("pdfs", f));
-
     const url = `${API_BASE}/upload-past-docs?${qs({
       session_id: sessionId || "",
-      challenge_id: "default_challenge",
-      test_case_name: "default_test_case",
-      description: "default_description",
       persona_role: persona.profession || "default_role",
       task: persona.task || "default_task",
     })}`;
-
-    setProcessing(true);
+    setIsProcessingPast(true);
+    setIsProcessedPast(false);
     const res = await fetch(url, { method: "POST", body: form });
     const data = await res.json();
     if (data?.session_id && !sessionId) setSessionId(data.session_id);
-
-    const added = Array.from(files).map((f) => ({ name: f.name, url: absUrl(f.name) }));
+    const added = Array.from(files).map((f) => ({ name: f.name, url: URL.createObjectURL(f) }));
     setPastDocs((prev) => [...prev, ...added]);
-
-    setProcessing(false);
-    setProcessed(false);
+    setIsProcessingPast(false);
+    setIsProcessedPast(true);
   };
 
   const uploadCurrent = async (files) => {
     if (!files?.length) return;
     const form = new FormData();
     files.forEach((f) => form.append("pdf", f));
-
     const url = `${API_BASE}/upload-current-doc?${qs({
       session_id: sessionId || "",
-      challenge_id: "default_challenge",
-      test_case_name: "default_test_case",
-      description: "default_description",
       persona_role: persona.profession || "default_role",
       task: persona.task || "default_task",
     })}`;
-
-    form.append("session_id", sessionId || "");
-
-    setProcessing(true);
+    setIsProcessingCurrent(true);
     const res = await fetch(url, { method: "POST", body: form });
     const data = await res.json();
     if (data?.session_id && !sessionId) setSessionId(data.session_id);
-
-    const added = Array.from(files).map((f) => ({ name: f.name, url: absUrl(f.name) }));
+    const added = Array.from(files).map((f) => ({ name: f.name, url: URL.createObjectURL(f) }));
     setCurrentDocs((prev) => [...prev, ...added]);
-    setProcessing(false);
+    setIsProcessingCurrent(false);
+  };
+
+  const handleRolePersona = async ({ sessionId, persona, setIsProcessingRole, setRoleData }) => {
+    try {
+      const url = `${API_BASE}/role-task?${qs({
+        session_id: sessionId || "",
+        persona_role: persona.profession || "default_role",
+        task: persona.task || "default_task",
+      })}`;
+
+      setIsProcessingRole(true);
+
+      const res = await fetch(url, { method: "POST" });
+      const data = await res.json();
+
+      if (data.error) {
+        console.error("⚠ Error generating role persona:", data.error);
+      } else {
+        setRoleData(data);
+      }
+    } catch (err) {
+      console.error("⚠ Network error:", err);
+    } finally {
+      setIsProcessingRole(false);
+    }
   };
 
   useEffect(() => {
@@ -92,48 +94,35 @@ export default function AbodeSmartApp() {
       setAdobeReady(true);
       return;
     }
-    window.adobe_dc_view_sdk = window.adobe_dc_view_sdk || {};
-    window.adobe_dc_view_sdk.ready = () => setAdobeReady(true);
+    document.addEventListener("adobe_dc_view_sdk.ready", () => setAdobeReady(true));
   }, []);
 
-  const handleTextSelection = async (docName, pageNumber, selectedText) => {
-    console.log("Selected text:", selectedText);
+  const handleTextSelection = async (selectedText) => {
+    if (!sessionId || !selectedText) return;
     try {
       const res = await fetch(`${API_BASE}/select-text`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          session_id: sessionId,
-          selected_text: selectedText,
-        }),
+        body: JSON.stringify({ session_id: sessionId, selected_text: selectedText }),
       });
       const responseData = await res.json();
-
       const sections = responseData?.data?.extracted_sections;
-      console.log("Relevant sections:", sections);
-
-      if (Array.isArray(sections) && sections.length) {
-        console.log("Setting relevant sections:", sections);
-        setRelevantSections(sections);
-      } else {
-        console.log("No relevant sections found in response");
-        setRelevantSections([]);
-      }
+      setRelevantSections(Array.isArray(sections) ? sections : []);
     } catch (err) {
       console.error("Error fetching relevant sections:", err);
+      setRelevantSections([]);
     }
   };
 
   const handleGetRelevantContentClick = async () => {
-    console.log("Get selected content clicked");
     if (!viewerApiRef.current) return;
     try {
       const result = await viewerApiRef.current.getSelectedContent();
-      if (result?.data) {
-        setSelectedText(result.data); // Store the selected text for other features
-        handleTextSelection(selectedDoc?.name, result.pageNumber || 1, result.data);
+      const text = result?.data?.trim();
+      if (text) {
+        handleTextSelection(text);
       } else {
-        alert("No text selected in the PDF!");
+        alert("Please select text in the PDF to find relevant content.");
       }
     } catch (err) {
       console.error("getSelectedContent error:", err);
@@ -141,32 +130,26 @@ export default function AbodeSmartApp() {
   };
 
   const handleInsightsClick = async () => {
+    if (!viewerApiRef.current) return;
     setIsLoadingInsights(true);
     setInsights(null);
-
-    if (!viewerApiRef.current) return;
     try {
       const result = await viewerApiRef.current.getSelectedContent();
       const text = result?.data?.trim();
       if (!text) {
-        alert("No text selected in the PDF!");
+        alert("Please select text to generate insights.");
+        setIsLoadingInsights(false);
         return;
       }
-
-      setSelectedText(text);
-
-      if (!sessionId) return;
-      console.log("Selected text for insights:", text);
-
+      if (!sessionId) {
+        setIsLoadingInsights(false);
+        return;
+      }
       const res = await fetch(`${API_BASE}/insights`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          session_id: sessionId,
-          selected_text: text, // use local variable
-        }),
+        body: JSON.stringify({ session_id: sessionId, selected_text: text }),
       });
-
       const data = await res.json();
       setInsights(data?.data?.insights || data?.insights || {});
     } catch (err) {
@@ -175,12 +158,51 @@ export default function AbodeSmartApp() {
       setIsLoadingInsights(false);
     }
   };
-    
+
   const handlePodcastClick = async () => {
+    if (isPlaying && audioRef.current) {
+      console.log("Stopping current audio");
+
+      // Stop playback and reset
+      audioRef.current.pause();
+      audioRef.current.currentTime = 0;
+      audioRef.current.src = "";
+      audioRef.current.load();
+
+      setIsPlaying(false);
+
+      // Free object URL memory
+      if (podcastUrl) {
+        URL.revokeObjectURL(podcastUrl);
+        setPodcastUrl(null);
+      }
+
+      // Tell backend to cancel synthesis
+      if (sessionId) {
+        try {
+          await fetch(`${API_BASE}/stop-podcast`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ session_id: sessionId ,
+              selected_text: ""  
+            }),
+          });
+        } catch (err) {
+          console.error("Error stopping podcast on backend:", err);
+        }
+      }
+
+      return;
+    }
+
     setIsLoadingPodcast(true);
     setPodcastUrl(null);
 
-    if (!viewerApiRef.current) return;
+    if (!viewerApiRef.current) {
+      setIsLoadingPodcast(false);
+      return;
+    }
+
     try {
       const result = await viewerApiRef.current.getSelectedContent();
       const text = result?.data?.trim();
@@ -189,60 +211,80 @@ export default function AbodeSmartApp() {
         return;
       }
 
-      setSelectedText(text);
-
-      if (!sessionId) return;
+      if (!sessionId) {
+        alert("Session not initialized!");
+        return;
+      }
 
       const res = await fetch(`${API_BASE}/podcast`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           session_id: sessionId,
-          selected_text: text, // use local variable
+          selected_text: text,
         }),
       });
 
+      if (!res.ok) {
+        throw new Error(`Server error: ${res.status}`);
+      }
+
+      console.log("Podcast response received, processing audio blob...");
       const audioBlob = await res.blob();
       const url = URL.createObjectURL(audioBlob);
       setPodcastUrl(url);
+      console.log("Generated podcast URL:", url);
+
+      // Create, play, and store the new audio instance
+      console.log("Playing new podcast audio from URL:", url);
+      const audio = new Audio(url);
+      audioRef.current = audio;
+      await audio.play();
+      setIsPlaying(true);
+      console.log("Audio is now playing:", isPlaying);
+
+      // Reset when audio finishes
+      audio.onended = () => {
+        setIsPlaying(false);
+        if (podcastUrl) {
+          URL.revokeObjectURL(podcastUrl);
+        }
+        audioRef.current = null;
+        setPodcastUrl(null);
+      };
+
     } catch (err) {
       console.error("Error fetching podcast:", err);
+      alert("Failed to generate podcast. Try again.");
     } finally {
       setIsLoadingPodcast(false);
     }
   };
 
-
   const navigateToPage = async (section) => {
     if (selectedDoc?.name !== section.pdfName) {
       const docToOpen = { name: section.pdfName, url: absUrl(section.pdfName) };
-      setSelectedDoc(docToOpen);
       await openInViewer(docToOpen);
     }
-
     if (viewerApiRef.current) {
       try {
         await viewerApiRef.current.gotoLocation(section.pageNo);
         if (viewerApiRef.current.search && section.title) {
-          await viewerApiRef.current.search(section.title, { caseSensitive: true });
+          await viewerApiRef.current.search(section.title, { caseSensitive: false });
         }
       } catch (error) {
         console.error("Error during navigation or text search:", error);
-        if (viewerApiRef.current.gotoLocation) {
-            viewerApiRef.current.gotoLocation(section.pageNo);
-        }
       }
     }
   };
 
   const openInViewer = async (doc) => {
     if (!adobeReady || !doc?.url) return;
-
+    setSelectedDoc(doc);
     const adobeView = new window.AdobeDC.View({
       clientId: import.meta.env.VITE_ADOBE_EMBED_API_KEY || process.env.REACT_APP_ADOBE_EMBED_API_KEY,
       divId: "adobe-dc-view",
     });
-
     try {
       const viewer = await adobeView.previewFile(
         {
@@ -250,17 +292,15 @@ export default function AbodeSmartApp() {
           metaData: { fileName: doc.name, id: doc.name },
         },
         {
+          embedMode: "SIZED_CONTAINER",
           showAnnotationTools: true,
           enableAnnotationAPIs: true,
-          includePDFAnnotations: true,
           showDownloadPDF: true,
           showPrintPDF: true,
           enableSearchAPIs: true,
-          enableTextSelection: true,
         }
       );
-      const apis = await viewer.getAPIs();
-      viewerApiRef.current = apis;
+      viewerApiRef.current = await viewer.getAPIs();
     } catch (error) {
       console.error("Error loading PDF in viewer:", error);
     }
@@ -278,231 +318,234 @@ export default function AbodeSmartApp() {
     return () => window.removeEventListener("beforeunload", onClose);
   }, [sessionId]);
 
+  const Panel = ({ title, children }) => (
+    <div className="bg-white border border-gray-200 rounded-lg shadow-sm flex flex-col">
+      <h3 className="text-base font-semibold text-gray-800 px-4 py-3 border-b border-gray-200 bg-gray-50/70 rounded-t-lg">{title}</h3>
+      <div className="p-4 space-y-4">{children}</div>
+    </div>
+  );
+
+  const FileInput = ({ onChange, multiple = false, disabled = false }) => (
+    <input
+      type="file"
+      multiple={multiple}
+      onChange={(e) => onChange(Array.from(e.target.files || []))}
+      disabled={disabled}
+      className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 transition-colors disabled:opacity-50 disabled:pointer-events-none cursor-pointer"
+    />
+  );
+
+  const TextInput = ({ placeholder, value, onChange }) => (
+    <input
+      className="bg-white border border-gray-300 rounded-md w-full p-2.5 text-sm text-gray-800 placeholder-gray-400 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 hover:border-gray-400 transition"
+      placeholder={placeholder}
+      value={value}
+      onChange={onChange}
+    />
+  );
+
+  const PrimaryButton = ({ onClick, children, className = "" }) => (
+    <button
+      onClick={onClick}
+      className={`px-4 py-2 rounded-md bg-blue-950 hover:bg-black text-white text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-800 transition-all ${className}`}
+    >
+      {children}
+    </button>
+  );
+
+  const SecondaryButton = ({ onClick, title, children, isLoading = false }) => (
+    <button
+      onClick={onClick}
+      title={title}
+      className="px-4 py-2 rounded-md border border-gray-300 bg-white text-sm font-semibold text-gray-700 hover:bg-gray-50 hover:border-gray-400 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-all"
+      disabled={isLoading}
+    >
+      {isLoading ? (
+        <svg className="animate-spin h-5 w-5 text-gray-700" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+        </svg>
+      ) : (
+        children
+      )}
+    </button>
+  );
+
+  const ProcessingIndicator = ({ text }) => (
+    <div className="flex items-center gap-2 text-sm text-blue-600 p-2 bg-blue-50 rounded-md">
+      <svg className="animate-spin h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+      </svg>
+      <span>{text}</span>
+    </div>
+  );
+
+  const EmptyState = ({ message }) => (
+    <div className="text-center py-4">
+      <p className="text-sm text-gray-500">{message}</p>
+    </div>
+  );
+
   return (
-    <div className="p-4 grid grid-cols-12 gap-4">
-      {/* Left: Persona + Past Library */}
-      <div className="col-span-3 space-y-4">
-        <div className="bg-white rounded-xl border p-3">
-          <div className="font-semibold mb-2">Persona</div>
-          <div className="space-y-2">
-            <input
-              className="border rounded w-full p-2"
-              placeholder="Name"
-              value={persona.name}
-              onChange={(e) => setPersona({ ...persona, name: e.target.value })}
-            />
-            <input
-              className="border rounded w-full p-2"
-              placeholder="Profession"
-              value={persona.profession}
-              onChange={(e) => setPersona({ ...persona, profession: e.target.value })}
-            />
-            <input
-              className="border rounded w-full p-2"
-              placeholder="Task to be done"
-              value={persona.task}
-              onChange={(e) => setPersona({ ...persona, task: e.target.value })}
-            />
-          </div>
-        </div>
-
-        <div className="bg-white rounded-xl border p-3">
-          <div className="flex items-center justify-between mb-2">
-            <div className="font-semibold">Past Library</div>
-          </div>
-          <input
-            type="file"
-            multiple
-            onChange={(e) => uploadPast(Array.from(e.target.files || []))}
-            className="mb-2 w-full text-sm"
-          />
-          <ul className="max-h-60 overflow-auto space-y-1">
-            {pastDocs.map((d, i) => (
-              <li key={`${d.name}-${i}`}>
-                <button
-                  onClick={() => {
-                    openInViewer(d);
-                    setSelectedDoc(d);
-                  }}
-                  className="w-full text-left px-2 py-1 rounded hover:bg-gray-100 truncate"
-                  title={d.name}
-                >
-                  {d.name}
-                </button>
-              </li>
-            ))}
-            {!pastDocs.length && <li className="text-sm text-gray-500">No files yet</li>}
-          </ul>
-        </div>
-      </div>
-
-      {/* Middle: Current Session + Controls */}
-      <div className="col-span-3 space-y-4">
-        <div className="bg-white rounded-xl border p-3">
-          <div className="font-semibold mb-2">Current Session</div>
-          <input
-            type="file"
-            multiple
-            onChange={(e) => uploadCurrent(Array.from(e.target.files || []))}
-            className="mb-2 w-full text-sm"
-          />
-          <ul className="max-h-60 overflow-auto space-y-1">
-            {currentDocs.map((d, i) => (
-              <li key={`${d.name}-${i}`}>
-                <button
-                  onClick={() => {
-                    openInViewer(d);
-                    setSelectedDoc(d);
-                  }}
-                  className="w-full text-left px-2 py-1 rounded hover:bg-gray-100 truncate"
-                  title={d.name}
-                >
-                  {d.name}
-                </button>
-              </li>
-            ))}
-            {!currentDocs.length && <li className="text-sm text-gray-500">No current files yet</li>}
-          </ul>
-
-          <div className="flex items-center gap-2 mt-3">
-            {processed && <span className="text-green-600 text-sm">Processed ✓</span>}
-            {!processed && processing && (
-              <span className="text-yellow-600 text-sm">Processing…</span>
-            )}
+    <div className="h-screen w-screen flex flex-col font-sans text-gray-900 bg-gray-100">
+      <header className="w-full bg-white border-b border-gray-200 sticky top-0 z-10 h-16 flex-shrink-0">
+        <div className="max-w-full mx-auto px-6 h-full flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <svg role="img" viewBox="0 0 24 24" className="h-7 w-7 text-[#FF0000]" xmlns="http://www.w3.org/2000/svg"><title>Adobe</title><path d="M15.1 2H24v20L15.1 2zM8.9 2H0v20L8.9 2zM12 9.4l3.15 7.6L12 17l-3.15-.02.02-7.58z"/></svg>
+            <h1 className="text-xl font-bold tracking-tight text-gray-900">Smart Workspace</h1>
           </div>
           {sessionId && (
-            <div className="mt-2 text-xs text-gray-500">
-              session: <span className="font-mono">{sessionId.slice(0, 8)}…</span>
-            </div>
+            <span className="text-xs px-2.5 py-1 rounded-full bg-gray-100 text-gray-600 font-mono">
+              Session: {sessionId.slice(0, 8)}
+            </span>
           )}
         </div>
+      </header>
 
-        {!!topRelevant.length && (
-          <div className="bg-white rounded-xl border p-3 mt-4">
-            <div className="font-semibold mb-2">Top 5 Relevant</div>
-            <ul className="space-y-2">
-              {topRelevant.map((item, idx) => (
-                <li key={idx} className="border rounded p-2 flex justify-between">
-                  <div className="min-w-0">
-                    <div className="font-medium truncate">
-                      {item.pdf_name} — p.{item.page_no}
-                    </div>
-                    <div className="text-sm italic truncate">{item.section_title}</div>
-                    <div className="text-sm text-gray-600 line-clamp-2">{item.sub_text}</div>
-                  </div>
-                  <button
-                    onClick={() => navigateToPage(item)}
-                    className="shrink-0 bg-blue-600 text-white px-2 py-1 rounded"
-                  >
-                    Navigate
-                  </button>
-                </li>
-              ))}
+      <main className="flex-grow grid grid-cols-12 gap-6 p-6 overflow-hidden">
+        <aside className="col-span-3 space-y-6 overflow-y-auto pb-6 pr-3">
+          <Panel title="Past Documents">
+            <FileInput onChange={uploadPast} multiple disabled={isProcessingPast} />
+            {isProcessingPast && <ProcessingIndicator text="Processing documents..." />}
+            {isProcessedPast && <div className="text-sm text-green-600">✓ Documents processed successfully.</div>}
+            <ul className="space-y-1">
+              {pastDocs.length > 0 ? (
+                pastDocs.map((d, i) => (
+                  <li key={`${d.name}-${i}`}>
+                    <button onClick={() => openInViewer(d)} className={`w-full text-left px-3 py-1.5 text-sm rounded-md transition-colors truncate ${selectedDoc?.name === d.name ? "bg-blue-100 font-semibold" : "hover:bg-gray-100"}`} title={d.name}> {d.name} </button>
+                  </li>
+                ))
+              ) : (
+                <EmptyState message="Upload reference documents here." />
+              )}
             </ul>
-          </div>
-        )}
-      </div>
+          </Panel>
 
-      {/* Right: Viewer and Results */}
-      <div className="col-span-6 space-y-4">
-        <div className="bg-white rounded-xl border p-3">
-          <div className="flex items-center justify-between mb-2">
-            <div className="flex items-center gap-4">
-                <div className="font-semibold">PDF Viewer</div>
-                <div className="text-xs text-gray-500">
-                    {processing ? "processing…" : selectedDoc ? selectedDoc.name : "idle"}
-                </div>
+          <Panel title="Current Document">
+            <FileInput onChange={uploadCurrent} disabled={isProcessingCurrent} />
+            {isProcessingCurrent && <ProcessingIndicator text="Uploading document..." />}
+            <ul className="space-y-1">
+              {currentDocs.length > 0 ? (
+                currentDocs.map((d, i) => (
+                  <li key={`${d.name}-${i}`}>
+                    <button onClick={() => openInViewer(d)} className={`w-full text-left px-3 py-1.5 text-sm rounded-md transition-colors truncate ${selectedDoc?.name === d.name ? "bg-blue-100 font-semibold" : "hover:bg-gray-100"}`} title={d.name}> {d.name} </button>
+                  </li>
+                ))
+              ) : (
+                <EmptyState message="Upload your main document here." />
+              )}
+            </ul>
+          </Panel>
+
+          <Panel title="Persona">
+            <TextInput placeholder="Profession (e.g., Legal Analyst)" value={persona.profession} onChange={(e) => setPersona({ ...persona, profession: e.target.value })}/>
+            <TextInput placeholder="Task (e.g., Summarize contract risks)" value={persona.task} onChange={(e) => setPersona({ ...persona, task: e.target.value })}/>
+            <PrimaryButton 
+              onClick={() => handleRolePersona({ sessionId, persona, setIsProcessingRole, setRoleData })}
+              className="w-full mt-2"
+              disabled={!persona.profession || !persona.task || isProcessingRole}
+            >
+              {isProcessingRole ? "Processing..." : "Generate Role Persona"}
+            </PrimaryButton>
+          </Panel>
+        </aside>
+
+        <section className="col-span-5 h-full flex flex-col">
+          <div className="bg-white border border-gray-200 rounded-lg shadow-sm h-full flex flex-col">
+            <div className="px-4 py-3 border-b border-gray-200 flex-shrink-0 flex items-center justify-between gap-2">
+              <div className="min-w-0">
+                <h2 className="text-base font-semibold truncate text-gray-900">{selectedDoc ? selectedDoc.name : "PDF Viewer"}</h2>
+                <p className="text-xs text-gray-500">{selectedDoc ? "Select text and use the actions below" : "Select a document to view"}</p>
+              </div>
+              <div className="flex items-center gap-2">
+                <SecondaryButton onClick={handleInsightsClick} title="Generate Insights" isLoading={isLoadingInsights}>Insights</SecondaryButton>
+                <SecondaryButton 
+                  onClick={handlePodcastClick} 
+                  className="p-2 rounded-full hover:bg-gray-200 disabled:opacity-50" 
+                  title={isPlaying ? "Stop Audio" : "Generate Audio Overview"}
+                  disabled={isLoadingInsights} // Disable if insights are loading
+                >
+                  {isLoadingPodcast ? "..." : (isPlaying ? "⏹" : "🎙")}
+              </SecondaryButton>
+                <PrimaryButton onClick={handleGetRelevantContentClick}>Get Relevant Sections</PrimaryButton>
+              </div>
             </div>
-            <div className="flex items-center gap-2">
-              <button onClick={handleInsightsClick} className="p-2 rounded-full hover:bg-gray-200 disabled:opacity-50" title="Generate Insights">
-                {isLoadingInsights ? "..." : "💡"}
-              </button>
-              <button onClick={handlePodcastClick} className="p-2 rounded-full hover:bg-gray-200 disabled:opacity-50" title="Generate Audio Overview">
-                {isLoadingPodcast ? "..." : "🎙️"}
-              </button>
-              <button
-                onClick={handleGetRelevantContentClick}
-                className="bg-blue-600 text-white px-3 py-1 rounded text-sm hover:bg-blue-700"
-              >
-                Get Relevant Content
-              </button>
-            </div>
+            <div id="adobe-dc-view" className="w-full flex-grow rounded-b-lg bg-gray-50" />
           </div>
-          <div id="adobe-dc-view" className="h-[600px] border rounded" />
-        </div>
-        
-        {insights && (
-          <div className="bg-white rounded-xl border p-4 relative animate-fade-in">
-            <button onClick={() => setInsights(null)} className="absolute top-2 right-3 text-gray-500 hover:text-gray-800 text-xl font-bold">&times;</button>
-            <h3 className="font-semibold text-lg mb-2">Insights ✨</h3>
-            <div>
-              {insights.key_takeaways && (
-                  <>
-                    <h4 className="font-bold mt-2">Key Takeaways</h4>
-                    <ul className="list-disc list-inside text-sm text-gray-700">
+        </section>
+
+        <aside className="col-span-4 space-y-6 overflow-y-auto pb-6 pr-3">
+          <Panel title="Relevant Sections">
+            <div className="space-y-2">
+              {relevantSections.length > 0 ? (
+                relevantSections.map((s, idx) => (
+                  <div key={idx} className="border border-gray-200 rounded-lg p-3 hover:border-blue-400 transition">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="font-semibold text-sm truncate text-gray-900">{s.pdfName}</div>
+                        <div className="text-xs text-gray-500 truncate">Page {s.pageNo} - {s.title}</div>
+                      </div>
+                      <button onClick={() => navigateToPage(s)} className="shrink-0 px-2.5 py-1 rounded-md border border-blue-600 text-blue-600 text-xs font-semibold hover:bg-blue-50 transition">
+                        Go to
+                      </button>
+                    </div>
+                    <p className="text-xs text-gray-600 mt-2 line-clamp-3">{s.snippet}</p>
+                  </div>
+                ))
+              ) : (
+                <EmptyState message="Results will appear here." />
+              )}
+            </div>
+          </Panel>
+
+          <Panel title="Insights">
+            {insights ? (
+              <div className="space-y-4 text-sm">
+                {insights.key_takeaways && (
+                  <div>
+                    <h4 className="font-semibold text-gray-800 mb-1">Key Takeaways</h4>
+                    <ul className="list-disc list-inside text-gray-700 space-y-1">
                       {insights.key_takeaways.map((item, i) => <li key={i}>{item}</li>)}
                     </ul>
-                  </>
-              )}
-              {insights.did_you_know && (
-                  <>
-                    <h4 className="font-bold mt-3">Did You Know?</h4>
-                    <p className="text-sm text-gray-700">{insights.did_you_know}</p>
-                  </>
-              )}
-               {insights.counterpoint && (
-                  <>
-                    <h4 className="font-bold mt-3">Counterpoint</h4>
-                    <p className="text-sm text-gray-700">{insights.counterpoint}</p>
-                  </>
-              )}
-              {insights.inspiration && (
-                  <>
-                    <h4 className="font-bold mt-3">Inspiration</h4>
-                    <p className="text-sm text-gray-700">{insights.inspiration}</p>
-                  </>
-              )}
-            </div>
-          </div>
-        )}
-
-        {podcastUrl && (
-          <div className="bg-white rounded-xl border p-4 relative animate-fade-in">
-            <button onClick={() => setPodcastUrl(null)} className="absolute top-2 right-3 text-gray-500 hover:text-gray-800 text-xl font-bold">&times;</button>
-            <h3 className="font-semibold text-lg mb-2">Audio Overview 🎧</h3>
-            <audio controls autoPlay src={podcastUrl} className="w-full mt-2">
-              Your browser does not support the audio element.
-            </audio>
-          </div>
-        )}
-
-        {!!relevantSections.length && (
-          <div className="bg-white rounded-xl border p-3">
-            <div className="font-semibold mb-2">Relevant Sections</div>
-            <div className="space-y-2">
-              {relevantSections.map((s, idx) => (
-                <div key={idx} className="border rounded p-2 flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <div className="font-medium truncate">
-                      {s.pdfName} — p.{s.pageNo}
-                    </div>
-                    <div className="text-sm italic truncate">{s.title}</div>
-                    <div className="text-sm text-gray-600 line-clamp-3">{s.snippet}</div>
                   </div>
-                  <button
-                    onClick={() =>
-                      navigateToPage(s)
-                    }
-                    className="shrink-0 bg-blue-600 text-white px-2 py-1 rounded text-sm"
-                  >
-                    Navigate
-                  </button>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-      </div>
+                )}
+                {insights.did_you_know && (
+                  <div>
+                    <h4 className="font-semibold text-gray-800 mb-1">Did You Know?</h4>
+                    <p className="text-gray-700">{insights.did_you_know}</p>
+                  </div>
+                )}
+                {insights.counterpoint && (
+                  <div>
+                    <h4 className="font-semibold text-gray-800 mb-1">Counterpoint</h4>
+                    <p className="text-gray-700">{insights.counterpoint}</p>
+                  </div>
+                )}
+                {insights.inspiration && (
+                  <div>
+                    <h4 className="font-semibold text-gray-800 mb-1">Inspiration</h4>
+                    <p className="text-gray-700">{insights.inspiration}</p>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <EmptyState message="Insights will appear here." />
+            )}
+          </Panel>
+
+          {podcastUrl && (
+            <Panel title="Audio Overview">
+              <div className="space-y-2">
+                <audio controls autoPlay src={podcastUrl} className="w-full" />
+                <button onClick={() => setPodcastUrl(null)} className="w-full text-center px-3 py-1.5 rounded-lg border text-sm hover:bg-gray-100 font-semibold text-gray-600 transition-colors">
+                  Clear Audio
+                </button>
+              </div>
+            </Panel>
+          )}
+        </aside>
+      </main>
     </div>
   );
 }

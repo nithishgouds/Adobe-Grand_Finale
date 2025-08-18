@@ -1,21 +1,29 @@
-from fastapi import FastAPI, UploadFile, File, Query
+import io
+from fastapi import FastAPI, UploadFile, File, Query, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from typing import List
+from fastapi import BackgroundTasks
+from typing import List, Optional
 from pydantic import BaseModel
 from pathlib import Path
 import shutil
 import subprocess
 import uuid
+import datetime
 from relevant_pages import get_relevant_pages
+import azure.cognitiveservices.speech as speechsdk
 import google.generativeai as genai
 import os
 import json
+from fastapi.responses import StreamingResponse
 from dotenv import load_dotenv
 
 load_dotenv()
 
 PDF_FOLDER = Path("round1b") / "PDFs"
+INPUT_PATH = Path("round1b") / "input.json"
+OUTPUT_PATH = Path("round1b") / "output.json"
+
 PDF_FOLDER.mkdir(parents=True, exist_ok=True)
 SESSION_FOLDERS = {}
 
@@ -23,6 +31,11 @@ app = FastAPI()
 
 genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
 model = genai.GenerativeModel("gemini-2.5-flash")
+
+AZURE_SPEECH_KEY = os.getenv("AZURE_SPEECH_KEY")
+AZURE_REGION = os.getenv("AZURE_REGION")
+
+PODCAST_CANCEL_FLAGS = {}
 
 app.add_middleware(
     CORSMiddleware,
@@ -165,6 +178,7 @@ async def end_session(session_id: str):
     if folder_path.exists() and folder_path.is_dir():
         shutil.rmtree(folder_path)   # deletes the folder and everything inside
     SESSION_FOLDERS.pop(session_id, None)
+    folder_path = Path("round1b") / "PDFs"
     folder_path.mkdir(parents=True, exist_ok=True)
     return {"message": f"Session {session_id} ended and folder round1b deleted."}
 
@@ -227,3 +241,153 @@ async def get_insights(request: TextSelectionRequest):
 
     except Exception as e:
         return {"error": str(e)}
+
+
+def generate_podcast_script(selected_text: str, insights: dict) -> list:
+    prompt = f"""
+    You are a podcast script generator.
+    Based on the following text and insights, create a 2-3 minute conversation between Alice (female) and Bob (male).
+    Selected Text:
+    "{selected_text}"
+    Insights:
+    {json.dumps(insights, indent=2)}
+    Rules:
+    - ONLY output valid JSON
+    - Format: [{{ "speaker": "Alice", "line": "..." }}, {{ "speaker": "Bob", "line": "..." }}]
+    - No markdown, no commentary.
+    - Alternate speakers naturally, 12–20 lines total.
+    """
+    response = model.generate_content(
+        prompt,
+        generation_config=genai.types.GenerationConfig(
+            response_mime_type="application/json"
+        )
+    )
+    try:
+        return json.loads(response.text)
+    except json.JSONDecodeError:
+        raise ValueError(f"Model did not return valid JSON: {response.text}")
+
+
+# MODIFIED: Added speech_synthesis_output_format parameter
+def synthesize_voice(text: str, voice: str) -> bytes:
+    speech_config = speechsdk.SpeechConfig(
+        subscription=AZURE_SPEECH_KEY,
+        region=AZURE_REGION
+    )
+    # Set the output format to MP3 for proper streaming
+    speech_config.set_speech_synthesis_output_format(
+        speechsdk.SpeechSynthesisOutputFormat.Audio16Khz32KBitRateMonoMp3
+    )
+    speech_config.speech_synthesis_voice_name = voice
+
+    synthesizer = speechsdk.SpeechSynthesizer(
+        speech_config=speech_config, audio_config=None
+    )
+    result = synthesizer.speak_text_async(text).get()
+
+    if result.reason == speechsdk.ResultReason.SynthesizingAudioCompleted:
+        return result.audio_data
+    else:
+        raise Exception(f"TTS failed: {result.reason}")
+
+
+@app.post("/podcast")
+async def podcast(request: TextSelectionRequest):
+    session_id = request.session_id
+    selected_text = request.selected_text.strip()
+
+    if session_id not in SESSION_FOLDERS:
+        raise HTTPException(status_code=400, detail="Invalid session ID.")
+
+    try:
+        insights_data = await get_insights(request)
+        insights = insights_data["insights"]
+
+        dialogue = generate_podcast_script(selected_text, insights)
+
+        async def audio_stream_generator():
+            for turn in dialogue:
+                speaker = turn["speaker"]
+                line = turn["line"]
+
+                voice = "en-US-JennyNeural" if speaker == "Alice" else "en-US-GuyNeural"
+
+                print(f"{speaker}: {line}")
+
+                audio_chunk = synthesize_voice(line, voice)
+                yield audio_chunk
+        return StreamingResponse(audio_stream_generator(), media_type="audio/mpeg")
+
+    except ValueError as e:
+        # Catch JSON errors from the model
+        raise HTTPException(
+            status_code=503, detail=f"Error generating script: {e}")
+    except Exception as e:
+        # Catch other potential errors (e.g., from Azure)
+        raise HTTPException(
+            status_code=500, detail=f"An unexpected error occurred: {e}")
+    
+@app.post("/role-task")
+async def generate_role_persona(
+    session_id: Optional[str] = Query(None),
+    persona_role: Optional[str] = Query("default_role"),
+    task: Optional[str] = Query("default_task")
+):
+    """
+    Generate a role-persona analysis based on uploaded PDFs and provided persona/task information.
+    """
+    try:
+        # ✅ Reuse session folder or create new
+        if not session_id or session_id not in SESSION_FOLDERS:
+            session_id, folder_path = create_session_folder()
+        else:
+            folder_path = SESSION_FOLDERS[session_id]
+
+        # ✅ Collect PDFs directly from folder
+        pdf_files = list(folder_path.glob("*.pdf"))
+        if not pdf_files:
+            return {"error": "No PDFs found in session folder.", "session_id": session_id}
+
+        documents = [{"filename": f.name, "title": f.stem} for f in pdf_files]
+
+        # ✅ Input JSON for processing
+        input_json = {
+            "documents": documents,
+            "persona": {"role": persona_role},
+            "job_to_be_done": {"task": task}
+        }
+        with open(INPUT_PATH, "w", encoding="utf-8") as f:
+            json.dump(input_json, f, indent=2)
+
+        # ✅ Skeleton output
+        skeleton_output = {
+            "metadata": {
+                "input_documents": [doc["filename"] for doc in documents],
+                "persona": persona_role,
+                "job_to_be_done": task,
+                "processing_timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat()
+            },
+            "extracted_sections": [],
+            "subsection_analysis": []
+        }
+        with open(OUTPUT_PATH, "w", encoding="utf-8") as f:
+            json.dump(skeleton_output, f, indent=2)
+
+        # ✅ Run your processing scripts
+        subprocess.run(["C:/Users/chitr/Documents/GitHub/Adobe-Finale/backend/venv/Scripts/python.exe", "main.py"], check=False)
+
+        # ✅ Return processed role-persona JSON
+        if OUTPUT_PATH.exists():
+            with open(OUTPUT_PATH, "r", encoding="utf-8") as f:
+                return {"session_id": session_id, "data": json.load(f)}
+        else:
+            return {"error": "output.json not found", "session_id": session_id}
+
+    except Exception as e:
+        return {"error": str(e)}
+
+@app.post("/stop-podcast")
+async def stop_podcast(request: TextSelectionRequest):
+    PODCAST_CANCEL_FLAGS[request.session_id] = True
+    return {"message": f"Stopped podcast for {request.session_id}"}
