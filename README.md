@@ -54,6 +54,31 @@ The application is built around a Retrieval-Augmented Generation (RAG) pipeline 
 * **Vector Database/Index**: **FAISS** (Facebook AI Similarity Search)
 * **PDF Processing**: **PyMuPDF (`fitz`)**, `pymupdf4llm`
 * **Programming Language**: **Python**
+---
+
+## Docker Commands
+
+### Build Command
+
+
+- Run this from inside your solution folder (where Dockerfile is located):
+
+```
+docker build --platform linux/amd64 -t yourimageidentifier .
+```
+
+### Run Command
+
+```
+docker run `
+>> -v C:/path/to/credentials:/credentials `
+>> -e ADOBE_EMBED_API_KEY= YOUR KEY`
+>> -e GEMINI_API_KEY= YOUR KEY`
+>> -e AZURE_SPEECH_KEY= YOUR KEY`
+>> -e AZURE_REGION=centralindia `
+>> -p 8080:8080 `
+>> yourimageidentifier
+```
 
 ---
 
@@ -113,6 +138,10 @@ GEMINI_API_KEY="YOUR_GEMINI_API_KEY"
 # Azure Text-to-Speech Credentials
 AZURE_SPEECH_KEY="YOUR_AZURE_SPEECH_KEY"
 AZURE_REGION="YOUR_AZURE_SERVICE_REGION"
+
+# frontend/.env
+# Adobe Embed API Key
+VITE_ADOBE_EMBED_API_KEY="YOUR_ADOBE_EMBED_API_KEY"
 ```
 
 
