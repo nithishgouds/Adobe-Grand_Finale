@@ -7,7 +7,7 @@ import faiss
 import argparse
 import numpy as np
 from sentence_transformers import SentenceTransformer
-from process_pdfs import main_process_pdf
+from backend.process_pdfs import main_process_pdf
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DEFAULT_INPUT_JSON = os.path.join(BASE_DIR, "round1b", "input.json")

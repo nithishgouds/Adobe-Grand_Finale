@@ -1,6 +1,6 @@
 import React, { useEffect, useLayoutEffect, useRef, useState, useCallback } from "react"
 
-const API_BASE = "http://127.0.0.1:8000"
+const API_BASE = window._env_?.VITE_API_BASE || import.meta.env.VITE_API_BASE || "/api";
 
 export default function AbodeSmartApp() {
   const [persona, setPersona] = useState({ profession: "", task: "" })
