@@ -1,3 +1,25 @@
+## Docker Commands
+### Build Command
+
+- Run this from inside your solution folder (where Dockerfile is located):
+
+```
+docker build --platform linux/amd64 -t yourimageidentifier .
+```
+
+### Run Command
+
+```
+docker run `
+>> -v C:/path/to/credentials:/credentials `
+>> -e ADOBE_EMBED_API_KEY= YOUR KEY`
+>> -e GEMINI_API_KEY= YOUR KEY`
+>> -e AZURE_SPEECH_KEY= YOUR KEY`
+>> -e AZURE_REGION=centralindia `
+>> -p 8080:8080 `
+>> yourimageidentifier
+```
+---
 # Project Adobe-Finale: Intelligent Document Analysis & Content Generation Platform
 
 [![Python Version](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
@@ -55,33 +77,6 @@ The application is built around a Retrieval-Augmented Generation (RAG) pipeline 
 * **PDF Processing**: **PyMuPDF (`fitz`)**, `pymupdf4llm`
 * **Programming Language**: **Python**
 ---
-
-## Docker Commands
-
-### Build Command
-
-
-- Run this from inside your solution folder (where Dockerfile is located):
-
-```
-docker build --platform linux/amd64 -t yourimageidentifier .
-```
-
-### Run Command
-
-```
-docker run `
->> -v C:/path/to/credentials:/credentials `
->> -e ADOBE_EMBED_API_KEY= YOUR KEY`
->> -e GEMINI_API_KEY= YOUR KEY`
->> -e AZURE_SPEECH_KEY= YOUR KEY`
->> -e AZURE_REGION=centralindia `
->> -p 8080:8080 `
->> yourimageidentifier
-```
-
----
-
 ##  Getting Started: Local Setup & Running
 
 Follow these instructions to set up and run the project on your local machine.
