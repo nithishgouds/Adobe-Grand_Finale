@@ -54,6 +54,24 @@ The application is built around a Retrieval-Augmented Generation (RAG) pipeline 
 * **Vector Database/Index**: **FAISS** (Facebook AI Similarity Search)
 * **PDF Processing**: **PyMuPDF (`fitz`)**, `pymupdf4llm`
 * **Programming Language**: **Python**
+---
+
+## Docker Commands
+
+### Build Command
+
+
+- Run this from inside your solution folder (where Dockerfile is located):
+
+```
+docker build -t adobe-finale-app .
+```
+
+### Run Command
+
+```
+docker run -d -p 8000:8000 --env-file backend/.env -v $(pwd)/backend/round1b:/app/round1b --name adobe-finale-container adobe-finale-app
+```
 
 ---
 
