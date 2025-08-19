@@ -22,7 +22,6 @@ def get_relevant_pages(query_text: str, top_k: int = 5):
     query_embedding = model.encode([query_text], normalize_embeddings=True)
     query_embedding = np.array(query_embedding).astype("float32")
 
-    # Search more than top_k to allow filtering duplicates
     search_k = top_k * 3
     scores, indices = index.search(query_embedding, search_k)
 
@@ -49,13 +48,13 @@ def get_relevant_pages(query_text: str, top_k: int = 5):
 
     results.sort(key=lambda x: x["score"], reverse=True)
 
-    print("🔎 Top results:", json.dumps(results, indent=2, ensure_ascii=False))
+    print("Top results:", json.dumps(results, indent=2, ensure_ascii=False))
     return results
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--query", type=str, required=True)
-    parser.add_argument("--top_k", type=int, default=3)
+    parser.add_argument("--top_k", type=int, default=5)
     args = parser.parse_args()
 
     output = get_relevant_pages(args.query, args.top_k)

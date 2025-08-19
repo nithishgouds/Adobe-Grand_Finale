@@ -9,7 +9,6 @@ try:
 except ImportError:
     HAS_PYMUPDF = False
 
-
 def clean_text(text):
     if not text:
         return ""
@@ -18,7 +17,6 @@ def clean_text(text):
     text = text.replace('–', '-').replace('“', '"').replace('”', '"')
     text = re.sub(r'\s+', ' ', text).strip()
     return text
-
 
 def extract_headings_from_markdown(markdown_text, page_num):
     headings = []
@@ -37,7 +35,6 @@ def extract_headings_from_markdown(markdown_text, page_num):
             })
     return headings
 
-
 def extract_headings_from_font_sizes(page, page_num):
     headings = []
     blocks = page.get_text("dict")["blocks"]
@@ -46,7 +43,7 @@ def extract_headings_from_font_sizes(page, page_num):
             for span in line.get("spans", []):
                 text = clean_text(span.get("text", ""))
                 size = span.get("size", 0)
-                if text and len(text.split()) < 15 and size > 12:
+                if text and len(text.split()) < 15 and size > 12: 
                     headings.append({
                         "level": "H2",
                         "text": text,
@@ -105,7 +102,6 @@ def get_best_title(doc):
             return cleaned
     return ""
 
-
 def process_pdf(pdf_path):
     filename = os.path.basename(pdf_path)
     doc = fitz.open(pdf_path)
@@ -148,8 +144,7 @@ def process_pdf(pdf_path):
 
     title = get_best_title(doc)
     if not title and outline:
-        first_h1 = next((h['text']
-                        for h in outline if h['level'] == 'H1'), None)
+        first_h1 = next((h['text'] for h in outline if h['level'] == 'H1'), None)
         title = first_h1 or outline[0]['text']
 
     doc.close()
@@ -160,16 +155,15 @@ def process_pdf(pdf_path):
         "filename": filename
     }
 
-
 def main_process_pdf(pdf_path):
 
     if not pdf_path:
         print("No PDF files found.")
         sys.exit(0)
-
+    
     try:
         result = process_pdf(pdf_path)
         return result
     except Exception as e:
         print(f"Error with {pdf_path}: {e}", file=sys.stderr)
-        return
+        return 

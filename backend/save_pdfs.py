@@ -92,9 +92,9 @@ def build_faiss_index(pdf_folder, session_id):
     faiss.write_index(index, index_path)
     with open(meta_path, "w", encoding="utf-8") as f:
         json.dump(metadata, f, ensure_ascii=False, indent=2)
-    print(f"✅ Appended {len(new_sections)} new sections to FAISS index.")
-    print(f"📂 Index saved to: {index_path}")
-    print(f"📂 Metadata saved to: {meta_path}")
+    print(f"Appended {len(new_sections)} new sections to FAISS index.")
+    print(f"Index saved to: {index_path}")
+    print(f"Metadata saved to: {meta_path}")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
