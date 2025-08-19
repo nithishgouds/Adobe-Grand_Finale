@@ -10,14 +10,14 @@ docker build --platform linux/amd64 -t yourimageidentifier .
 ### Run Command
 
 ```
-docker run `
->> -v C:/path/to/credentials:/credentials `
->> -e ADOBE_EMBED_API_KEY=27bcd3e82afb40d69d32056f2e694fe5 `
->> -e GEMINI_API_KEY= YOUR KEY`
->> -e AZURE_SPEECH_KEY= YOUR KEY`
->> -e AZURE_REGION=centralindia `
->> -p 8080:8080 `
->> yourimageidentifier
+docker run -v C:/path/to/credentials:/credentials `
+  -e ADOBE_EMBED_API_KEY=27bcd3e82afb40d69d32056f2e694fe5 `
+  -e GEMINI_API_KEY=YOURKEY `
+  -e AZURE_SPEECH_KEY=YOURKEY `
+  -e AZURE_REGION=centralindia `
+  -p 8080:8080 `
+  yourimageidentifier
+
 ```
 ---
 # Project Adobe-Finale: Intelligent Document Analysis & Content Generation Platform
