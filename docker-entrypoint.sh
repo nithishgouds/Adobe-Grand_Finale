@@ -10,7 +10,7 @@ echo "window._env_ = {
 # Start backend in background
 echo "Starting backend..."
 uvicorn backend.server:app --host 0.0.0.0 --port 8000 &
-sleep 25
+sleep 30
 echo "Backend started on port 8080"
 
 # Start nginx (serves frontend + proxies API)

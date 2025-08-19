@@ -10,6 +10,7 @@ MAPPING_PATH = Path("round1b") / "mysession_metadata.json"
 
 model = SentenceTransformer("intfloat/e5-base-v2")
 
+
 def get_relevant_pages(query_text: str, top_k: int = 5):
     if not INDEX_PATH.exists() or not MAPPING_PATH.exists():
         raise FileNotFoundError("FAISS index or metadata file not found.")
@@ -51,6 +52,7 @@ def get_relevant_pages(query_text: str, top_k: int = 5):
     print("Top results:", json.dumps(results, indent=2, ensure_ascii=False))
     return results
 
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--query", type=str, required=True)
@@ -58,4 +60,3 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     output = get_relevant_pages(args.query, args.top_k)
-    print(json.dumps(output, indent=2, ensure_ascii=False))

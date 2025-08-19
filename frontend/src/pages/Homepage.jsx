@@ -360,7 +360,7 @@ export default function AbodeSmartApp() {
     if (!adobeReady || !doc?.url) return
     setSelectedDoc(doc)
     const adobeView = new window.AdobeDC.View({
-      clientId: import.meta.env.VITE_ADOBE_EMBED_API_KEY || process.env.REACT_APP_ADOBE_EMBED_API_KEY,
+      clientId: window._env_?.VITE_ADOBE_EMBED_API_KEY || import.meta.env.VITE_ADOBE_EMBED_API_KEY || process.env.REACT_APP_ADOBE_EMBED_API_KEY,
       divId: "adobe-dc-view",
     })
     try {

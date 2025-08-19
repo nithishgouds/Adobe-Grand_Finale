@@ -313,8 +313,6 @@ async def podcast(request: TextSelectionRequest):
 
                 voice = "en-US-JennyNeural" if speaker == "Alice" else "en-US-GuyNeural"
 
-                print(f"{speaker}: {line}")
-
                 audio_chunk = synthesize_voice(line, voice)
                 yield audio_chunk
         return StreamingResponse(audio_stream_generator(), media_type="audio/mpeg")

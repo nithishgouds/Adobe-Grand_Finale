@@ -2,24 +2,27 @@ import os
 import json
 import re
 from datetime import datetime
-import fitz  
+import fitz
 import faiss
 import argparse
 import numpy as np
 from sentence_transformers import SentenceTransformer
 from process_pdfs import main_process_pdf
+from pathlib import Path
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DEFAULT_INPUT_JSON = os.path.join(BASE_DIR, "round1b", "input.json")
-DEFAULT_PDF_FOLDER = os.path.join(BASE_DIR, "round1b", "PDFs")
-DEFAULT_OUTPUT_PATH = os.path.join(BASE_DIR, "round1b", "output.json")
+# Default paths for input and output files
+DEFAULT_INPUT_JSON = Path("round1b")/ "input.json"
+DEFAULT_PDF_FOLDER = Path("round1b") / "PDFs"
+DEFAULT_OUTPUT_PATH = Path("round1b") / "output.json"
 
 
 def load_input_config(path):
     with open(path, 'r', encoding='utf-8') as f:
         data = json.load(f)
-    persona = data.get("persona", {}).get("role", "") or data.get("persona", "")
-    job = data.get("job_to_be_done", {}).get("task", "") or data.get("job_to_be_done", "")
+    persona = data.get("persona", {}).get(
+        "role", "") or data.get("persona", "")
+    job = data.get("job_to_be_done", {}).get(
+        "task", "") or data.get("job_to_be_done", "")
     filenames = [doc["filename"] for doc in data.get("documents", [])]
     return persona, job, filenames
 
@@ -31,12 +34,11 @@ def clean_text(text):
     return text.strip()
 
 
-
 def combine_lines(s):
 
     # Removing bullet symbols at the start of lines
     s = re.sub(r'^[\s]*[•\-–o]+\s*', '', s, flags=re.MULTILINE)
-    
+
     lines = [line.strip() for line in s.splitlines() if line.strip()]
     result = []
     temp = ""
@@ -56,7 +58,7 @@ def combine_lines(s):
                 temp = line
 
     if temp:
-        result.append(temp.strip()) 
+        result.append(temp.strip())
 
     return ' '.join(result)
 
@@ -82,7 +84,7 @@ def extract_sections_from_pdf(pdf_path, all_headings):
         if line_stripped in heading_texts:
             if current_section:
                 sections.append(current_section)
-            
+
             current_section = {
                 "title": line_stripped,
                 "content": "",
@@ -95,7 +97,6 @@ def extract_sections_from_pdf(pdf_path, all_headings):
         sections.append(current_section)
 
     return sections
-
 
 
 def build_faiss_index(model, sections):
@@ -114,9 +115,10 @@ def build_faiss_index(model, sections):
         return None, []
 
     dim = len(embeddings[0])
-    index = faiss.IndexFlatIP(dim) 
+    index = faiss.IndexFlatIP(dim)
     index.add(np.array(embeddings).astype('float32'))
     return index, metadata
+
 
 def query_faiss_index(model, index, metadata, query_text, top_k=25):
     query_embedding = model.encode(query_text, normalize_embeddings=True)
@@ -125,7 +127,7 @@ def query_faiss_index(model, index, metadata, query_text, top_k=25):
     results = []
     for i, idx in enumerate(I[0]):
         section = metadata[idx]
-        score = D[0][i]  
+        score = D[0][i]
         results.append((score, section))
 
     results.sort(key=lambda x: -x[0])
@@ -133,9 +135,9 @@ def query_faiss_index(model, index, metadata, query_text, top_k=25):
     return results
 
 
-
 def main():
-    parser = argparse.ArgumentParser(description="Process PDFs and extract relevant sections.")
+    parser = argparse.ArgumentParser(
+        description="Process PDFs and extract relevant sections.")
     parser.add_argument("--num_results", type=int, default=5,
                         help="Number of top results to extract and analyze (default: 5)")
     parser.add_argument("--input_json", type=str, default=DEFAULT_INPUT_JSON,
@@ -149,7 +151,6 @@ def main():
     input_json_path = args.input_json
     pdf_folder_path = args.pdf_folder
     output_path = args.output_json
-
 
     num_results = args.num_results
 
@@ -166,14 +167,15 @@ def main():
         if not os.path.exists(path):
             print(f"Missing: {filename}")
             continue
-        
+
         extracted_headings = main_process_pdf(path)
         if not extracted_headings:
             return
-        
+
         outline = extracted_headings["outline"]
-        headings = [[element["text"], element["page"]] for element in outline if element["level"] in ["H1", "H2"]]
-        all_headings[filename]=headings
+        headings = [[element["text"], element["page"]]
+                    for element in outline if element["level"] in ["H1", "H2"]]
+        all_headings[filename] = headings
 
         try:
             sections = extract_sections_from_pdf(path, all_headings)
@@ -199,7 +201,8 @@ def main():
     extracted_sections = []
     subsection_analysis = []
 
-    top_sections = [(score, section) for (score, section) in top_sections if len(combine_lines(section["content"]))>10]
+    top_sections = [(score, section) for (score, section) in top_sections if len(
+        combine_lines(section["content"])) > 10]
     for rank, (score, section) in enumerate(top_sections, 1):
         extracted_sections.append({
             "document": section["document"],
@@ -209,10 +212,10 @@ def main():
         })
 
         subsection_analysis.append({
-                "document": section["document"],
-                "refined_text": section["title"]+" - "+ combine_lines(section["content"]),
-                "page_number": section["page"]+1
-            })
+            "document": section["document"],
+            "refined_text": section["title"]+" - " + combine_lines(section["content"]),
+            "page_number": section["page"]+1
+        })
 
     output = {
         "metadata": {
