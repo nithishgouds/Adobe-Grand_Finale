@@ -64,13 +64,20 @@ The application is built around a Retrieval-Augmented Generation (RAG) pipeline 
 - Run this from inside your solution folder (where Dockerfile is located):
 
 ```
-docker build -t adobe-finale-app .
+docker build --platform linux/amd64 -t yourimageidentifier .
 ```
 
 ### Run Command
 
 ```
-docker run -d -p 8000:8000 --env-file backend/.env -v $(pwd)/backend/round1b:/app/round1b --name adobe-finale-container adobe-finale-app
+docker run `
+>> -v C:/path/to/credentials:/credentials `
+>> -e ADOBE_EMBED_API_KEY=27bcd3e82afb40d69d32056f2e694fe5 `
+>> -e GEMINI_API_KEY=AIzaSyDRnd9u8bcs01SRrDraBmxqyDygfIOyjKo `
+>> -e AZURE_SPEECH_KEY=8H9o1p775PjAV8Dwq1fysgu2tsjVKgMmOxYOi6gdwezKWYTEmk30JQQJ99BHACGhslBXJ3w3AAAYACOGh1zT `
+>> -e AZURE_REGION=centralindia `
+>> -p 8080:8080 `
+>> yourimageidentifier
 ```
 
 ---
