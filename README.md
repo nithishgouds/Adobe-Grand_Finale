@@ -72,9 +72,9 @@ docker build --platform linux/amd64 -t yourimageidentifier .
 ```
 docker run `
 >> -v C:/path/to/credentials:/credentials `
->> -e ADOBE_EMBED_API_KEY=27bcd3e82afb40d69d32056f2e694fe5 `
->> -e GEMINI_API_KEY=AIzaSyDRnd9u8bcs01SRrDraBmxqyDygfIOyjKo `
->> -e AZURE_SPEECH_KEY=8H9o1p775PjAV8Dwq1fysgu2tsjVKgMmOxYOi6gdwezKWYTEmk30JQQJ99BHACGhslBXJ3w3AAAYACOGh1zT `
+>> -e ADOBE_EMBED_API_KEY= YOUR KEY`
+>> -e GEMINI_API_KEY= YOUR KEY`
+>> -e AZURE_SPEECH_KEY= YOUR KEY`
 >> -e AZURE_REGION=centralindia `
 >> -p 8080:8080 `
 >> yourimageidentifier
