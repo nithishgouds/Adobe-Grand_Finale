@@ -6,7 +6,7 @@ import fitz
 import faiss
 import numpy as np
 from sentence_transformers import SentenceTransformer
-from backend.process_pdfs import main_process_pdf
+from process_pdfs import main_process_pdf
 
 
 def combine_lines(s):

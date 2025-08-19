@@ -73,6 +73,7 @@ export default function AbodeSmartApp() {
     setIsProcessedPast(false)
     const res = await fetch(url, { method: "POST", body: form })
     const data = await res.json()
+    console.log("Upload Past Response:", data)
     if (data?.session_id && !sessionId) setSessionId(data.session_id)
     const added = Array.from(files).map((f) => ({ name: f.name, url: URL.createObjectURL(f) }))
     setPastDocs((prev) => [...prev, ...added])
