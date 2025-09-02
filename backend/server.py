@@ -9,11 +9,12 @@ import shutil
 import subprocess
 import uuid
 import datetime
-from relevant_pages import get_relevant_pages
+from backend.relevant_pages import get_relevant_pages
 import azure.cognitiveservices.speech as speechsdk
 import google.generativeai as genai
 import os
 import json
+import uvicorn
 from fastapi.responses import StreamingResponse
 from dotenv import load_dotenv
 
@@ -434,3 +435,9 @@ async def pdf_chatbot(request: ChatRequest):
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 8080))
+    uvicorn.run("main:app", host="0.0.0.0", port=port, reload=False)
+
