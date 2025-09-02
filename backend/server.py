@@ -9,7 +9,7 @@ import shutil
 import subprocess
 import uuid
 import datetime
-from backend.relevant_pages import get_relevant_pages
+from relevant_pages import get_relevant_pages
 import azure.cognitiveservices.speech as speechsdk
 import google.generativeai as genai
 import os
